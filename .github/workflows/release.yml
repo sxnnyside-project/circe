@@ -7,6 +7,9 @@ on:
 
 permissions:
   contents: write
+  # Required for npm's OIDC trusted publisher — no NPM_TOKEN needed, npm
+  # exchanges this job's OIDC token for a short-lived publish credential.
+  id-token: write
 
 jobs:
   release:
@@ -23,6 +26,9 @@ jobs:
 
       - name: Quality gate (format, lint, typecheck, test, build)
         run: bun run check
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
