@@ -1,0 +1,74 @@
+{
+  "name": "@sxnnyside/circe",
+  "version": "0.1.0",
+  "description": "TypeScript/Bun-first Discord bot framework for the Sxnnyside Project ecosystem.",
+  "type": "module",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sxnnyside-project/circe.git"
+  },
+  "homepage": "https://github.com/sxnnyside-project/circe#readme",
+  "bugs": {
+    "url": "https://github.com/sxnnyside-project/circe/issues"
+  },
+  "keywords": [
+    "discord",
+    "discord-bot",
+    "framework",
+    "bun",
+    "typescript",
+    "sxnnyside"
+  ],
+  "engines": {
+    "bun": ">=1.2.0"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "default": "./dist/testing/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "build": "bun build ./src/index.ts ./src/testing/index.ts --outdir ./dist --target node --format esm --external discord.js && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "check": "biome check . && bun run typecheck && bun test && bun run build",
+    "clean": "rm -rf dist",
+    "prepare": "husky",
+    "prepublishOnly": "bun run check"
+  },
+  "lint-staged": {
+    "*.{ts,js,json}": "biome check --write --no-errors-on-unmatched"
+  },
+  "peerDependencies": {
+    "discord.js": "^14.16.0"
+  },
+  "dependencies": {
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.9",
+    "@types/bun": "latest",
+    "discord.js": "^14.27.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.3.0",
+    "typescript": "^5.7.0"
+  }
+}
