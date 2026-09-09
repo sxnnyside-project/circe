@@ -1,4 +1,4 @@
-import { ModalError } from "./errors.js";
+import { DiscoveryConflictError } from "../../errors/discovery-conflict-error.js";
 import type { ModalDefinition } from "./types.js";
 
 /**
@@ -13,14 +13,17 @@ export class ModalRegistry {
     const { prefix } = modal;
 
     if (!prefix) {
-      throw new ModalError("Modal handler is missing a prefix", {
-        metadata: { reason: "missing-prefix" },
+      throw new DiscoveryConflictError("Modal handler is missing a prefix", {
+        category: "modals",
+        reason: "missing-identity",
       });
     }
 
     if (this.#handlers.has(prefix)) {
-      throw new ModalError(`Duplicate modal prefix "${prefix}"`, {
-        metadata: { reason: "duplicate", prefix },
+      throw new DiscoveryConflictError(`Duplicate modal prefix "${prefix}"`, {
+        category: "modals",
+        reason: "duplicate",
+        identity: prefix,
       });
     }
 

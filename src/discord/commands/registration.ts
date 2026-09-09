@@ -1,5 +1,11 @@
-import { type RESTPostAPIChatInputApplicationCommandsJSONBody, Routes } from "discord.js";
+import {
+  ApplicationCommandType,
+  ContextMenuCommandBuilder,
+  type RESTPostAPIApplicationCommandsJSONBody,
+  Routes,
+} from "discord.js";
 import type { Logger } from "../../logging/logger.js";
+import type { MessageCommandDefinition, UserCommandDefinition } from "../context-menus/types.js";
 import { CommandError } from "./errors.js";
 import type { CommandDefinition } from "./types.js";
 
@@ -19,6 +25,9 @@ export interface RegisterCommandsOptions {
   /** Guild-scoped registration when present (dev/staging); global otherwise (production). */
   guildId?: string;
   commands: readonly CommandDefinition[];
+  /** Context menu commands are registered in the same bulk `PUT` — Discord's endpoint accepts all command types together. */
+  userContextMenuCommands?: readonly UserCommandDefinition[];
+  messageContextMenuCommands?: readonly MessageCommandDefinition[];
   logger: Logger;
 }
 
@@ -29,9 +38,15 @@ export interface RegisterCommandsOptions {
  * always matches exactly what's loaded, with nothing stale left behind.
  */
 export async function registerCommands(options: RegisterCommandsOptions): Promise<void> {
-  const body: RESTPostAPIChatInputApplicationCommandsJSONBody[] = options.commands.map((command) =>
-    command.builder.toJSON(),
-  );
+  const body: RESTPostAPIApplicationCommandsJSONBody[] = [
+    ...options.commands.map((command) => command.builder.toJSON()),
+    ...(options.userContextMenuCommands ?? []).map((command) =>
+      new ContextMenuCommandBuilder().setName(command.name).setType(ApplicationCommandType.User).toJSON(),
+    ),
+    ...(options.messageContextMenuCommands ?? []).map((command) =>
+      new ContextMenuCommandBuilder().setName(command.name).setType(ApplicationCommandType.Message).toJSON(),
+    ),
+  ];
 
   const scope = options.guildId ? "guild" : "global";
   const route = options.guildId

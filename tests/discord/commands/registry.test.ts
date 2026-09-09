@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { SlashCommandBuilder } from "discord.js";
-import { CommandError } from "../../../src/discord/commands/errors.js";
 import { CommandRegistry } from "../../../src/discord/commands/registry.js";
 import type { CommandDefinition } from "../../../src/discord/commands/types.js";
 import { defineCommand } from "../../../src/discord/commands/types.js";
+import { DiscoveryConflictError } from "../../../src/errors/discovery-conflict-error.js";
 
 function makeCommand(name: string): CommandDefinition {
   return {
@@ -30,11 +30,32 @@ describe("CommandRegistry", () => {
     expect(registry.has("missing")).toBe(false);
   });
 
-  test("throws CommandError on duplicate command names", () => {
+  test("throws DiscoveryConflictError on duplicate command names, naming the conflicting identity", () => {
     const registry = new CommandRegistry();
     registry.register(makeCommand("ping"));
 
-    expect(() => registry.register(makeCommand("ping"))).toThrow(CommandError);
+    expect(() => registry.register(makeCommand("ping"))).toThrow(DiscoveryConflictError);
+    try {
+      registry.register(makeCommand("ping"));
+      throw new Error("expected registration to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(DiscoveryConflictError);
+      expect((error as DiscoveryConflictError).reason).toBe("duplicate");
+      expect((error as DiscoveryConflictError).identity).toBe("ping");
+    }
+  });
+
+  test("throws DiscoveryConflictError when the builder has no name", () => {
+    const registry = new CommandRegistry();
+    const command = { builder: {}, execute: async () => {} };
+
+    try {
+      registry.register(command as unknown as CommandDefinition);
+      throw new Error("expected registration to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(DiscoveryConflictError);
+      expect((error as DiscoveryConflictError).reason).toBe("missing-identity");
+    }
   });
 
   test("exposes all registered command definitions", () => {

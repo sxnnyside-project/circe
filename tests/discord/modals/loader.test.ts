@@ -2,9 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ModalError } from "../../../src/discord/modals/errors.js";
 import { loadModals } from "../../../src/discord/modals/loader.js";
 import { ModalRegistry } from "../../../src/discord/modals/registry.js";
+import { DiscoveryConflictError } from "../../../src/errors/discovery-conflict-error.js";
+import { ModuleValidationError } from "../../../src/errors/module-validation-error.js";
 import { createLogger } from "../../../src/logging/logger.js";
 
 async function withTempDir(files: Record<string, string>, fn: (dir: string) => Promise<void>): Promise<void> {
@@ -55,32 +56,56 @@ describe("loadModals", () => {
     );
   });
 
-  test("throws ModalError when the default export has no execute function", async () => {
+  test("throws ModuleValidationError naming exactly `execute` as missing when the default export has no execute function", async () => {
     await withTempDir({ "broken.js": 'export default { prefix: "curate:" };' }, async (dir) => {
       const registry = new ModalRegistry();
-      await expect(loadModals(dir, { registry, logger })).rejects.toBeInstanceOf(ModalError);
+      try {
+        await loadModals(dir, { registry, logger });
+        throw new Error("expected loadModals to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ModuleValidationError);
+        expect((error as ModuleValidationError).issues).toEqual([{ file: "broken.js", message: "missing `execute`" }]);
+      }
     });
   });
 
-  test("throws ModalError when the default export has no prefix", async () => {
+  test("throws ModuleValidationError naming exactly `prefix` as missing when the default export has no prefix", async () => {
     await withTempDir({ "broken.js": "export default { execute: async () => {} };" }, async (dir) => {
       const registry = new ModalRegistry();
-      await expect(loadModals(dir, { registry, logger })).rejects.toBeInstanceOf(ModalError);
+      try {
+        await loadModals(dir, { registry, logger });
+        throw new Error("expected loadModals to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ModuleValidationError);
+        expect((error as ModuleValidationError).issues).toEqual([{ file: "broken.js", message: "missing `prefix`" }]);
+      }
     });
   });
 
-  test("throws ModalError, not a silent skip, when a module fails to import", async () => {
+  test("throws ModuleValidationError, not a silent skip, when a module fails to import", async () => {
     await withTempDir({ "broken.js": "throw new Error('boom during import');" }, async (dir) => {
       const registry = new ModalRegistry();
-      await expect(loadModals(dir, { registry, logger })).rejects.toBeInstanceOf(ModalError);
+      try {
+        await loadModals(dir, { registry, logger });
+        throw new Error("expected loadModals to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ModuleValidationError);
+        expect((error as ModuleValidationError).issues[0]?.message).toContain("boom during import");
+      }
       expect(registry.size).toBe(0);
     });
   });
 
-  test("surfaces duplicate prefixes discovered across two files, nested or not", async () => {
+  test("surfaces duplicate prefixes discovered across two files, nested or not, as DiscoveryConflictError", async () => {
     await withTempDir({ "a.js": VALID_SUBMIT, "curate/b.js": VALID_SUBMIT }, async (dir) => {
       const registry = new ModalRegistry();
-      await expect(loadModals(dir, { registry, logger })).rejects.toBeInstanceOf(ModalError);
+      try {
+        await loadModals(dir, { registry, logger });
+        throw new Error("expected loadModals to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(DiscoveryConflictError);
+        expect((error as DiscoveryConflictError).identity).toBe("curate:submit:");
+      }
     });
   });
 });

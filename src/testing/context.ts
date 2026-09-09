@@ -1,10 +1,17 @@
 import type { CommandContext } from "../discord/commands/types.js";
+import { IdentityI18nResolver } from "../i18n/identity-resolver.js";
+import { createTranslator } from "../i18n/translator.js";
+import type { I18nResolver } from "../i18n/types.js";
 import { createTestInteraction, type TestInteractionOptions } from "./interaction.js";
 import { createTestLogger } from "./logger.js";
 
 export interface TestContextOptions extends TestInteractionOptions {
   correlationId?: string;
+  /** Defaults to a resolver that returns every key verbatim, untranslated — same default as the real router. */
+  i18n?: I18nResolver;
 }
+
+const defaultI18nResolver = new IdentityI18nResolver();
 
 /**
  * Builds a `CommandContext` directly, for testing a command's `execute()`
@@ -26,5 +33,6 @@ export function createTestContext(options: TestContextOptions = {}): CommandCont
     user: interaction.user,
     logger,
     correlationId: options.correlationId,
+    t: createTranslator(options.i18n ?? defaultI18nResolver, interaction.locale),
   };
 }

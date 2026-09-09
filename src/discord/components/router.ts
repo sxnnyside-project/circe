@@ -1,7 +1,14 @@
 import { type Client, Events, GuildMember, type Interaction } from "discord.js";
+import type { MiddlewareModule } from "../../application/middleware.js";
+import { runWithMiddleware } from "../../application/middleware.js";
 import { normalizeError } from "../../errors/normalize-error.js";
+import { IdentityI18nResolver } from "../../i18n/identity-resolver.js";
+import { createTranslator } from "../../i18n/translator.js";
+import type { I18nResolver } from "../../i18n/types.js";
 import { getCorrelationId, withCorrelationId } from "../../logging/context.js";
 import type { Logger } from "../../logging/logger.js";
+import { reportError } from "../../observability/report-error.js";
+import type { ErrorReporter } from "../../observability/types.js";
 import { ComponentError } from "./errors.js";
 import type { ComponentRegistry } from "./registry.js";
 import type { ComponentContext, ComponentInteraction } from "./types.js";
@@ -26,7 +33,14 @@ export interface ComponentRouterOptions {
   logger: Logger;
   onUnknownComponent?: UnknownComponentHandler;
   onComponentError?: ComponentErrorHandler;
+  middleware?: MiddlewareModule;
+  /** Defaults to a resolver that returns every key verbatim, untranslated. */
+  i18n?: I18nResolver;
+  /** Called for every error this router's boundary catches, decoupled from the user-facing reply — for external reporting (OpenTelemetry, Sentry, metrics). */
+  onError?: ErrorReporter;
 }
+
+const defaultI18nResolver = new IdentityI18nResolver();
 
 async function defaultOnUnknownComponent(ctx: ComponentContext): Promise<void> {
   ctx.logger.warn("Received interaction for an unregistered component", { customId: ctx.interaction.customId });
@@ -62,6 +76,7 @@ export async function handleComponentInteraction(
       user: interaction.user,
       logger,
       correlationId,
+      t: createTranslator(options.i18n ?? defaultI18nResolver, interaction.locale),
     };
 
     const handler = options.registry.resolve(interaction.customId);
@@ -78,8 +93,14 @@ export async function handleComponentInteraction(
     let ctx: ComponentContext = { ...base, params: undefined };
 
     try {
-      ctx = { ...base, params: handler.parse?.(interaction.customId) };
-      await handler.execute(ctx);
+      await runWithMiddleware(
+        options.middleware,
+        () => ({ kind: "component", name: interaction.customId, logger, correlationId }),
+        async () => {
+          ctx = { ...base, params: handler.parse?.(interaction.customId) };
+          await handler.execute(ctx);
+        },
+      );
     } catch (error) {
       const normalized = normalizeError(error, `Component "${interaction.customId}" failed`);
       const componentError =
@@ -90,6 +111,12 @@ export async function handleComponentInteraction(
               operational: normalized.operational,
               metadata: { ...normalized.metadata, reason: "execution-failed", customId: interaction.customId },
             });
+      await reportError(
+        options.onError,
+        componentError,
+        { kind: "component", name: interaction.customId, correlationId },
+        logger,
+      );
       await (options.onComponentError ?? defaultOnComponentError)(ctx, componentError);
     }
   });

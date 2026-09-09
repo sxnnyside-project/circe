@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { EventError } from "../../../src/discord/events/errors.js";
 import { loadEvents } from "../../../src/discord/events/loader.js";
 import { EventRegistry } from "../../../src/discord/events/registry.js";
+import { ModuleValidationError } from "../../../src/errors/module-validation-error.js";
 import { createLogger } from "../../../src/logging/logger.js";
 
 async function withTempDir(files: Record<string, string>, fn: (dir: string) => Promise<void>): Promise<void> {
@@ -47,24 +47,42 @@ describe("loadEvents", () => {
     });
   });
 
-  test("throws EventError when the default export has no execute function", async () => {
+  test("throws ModuleValidationError naming exactly `execute` as missing when the default export has no execute function", async () => {
     await withTempDir({ "broken.js": 'export default { name: "ready" };' }, async (dir) => {
       const registry = new EventRegistry();
-      await expect(loadEvents(dir, { registry, logger })).rejects.toBeInstanceOf(EventError);
+      try {
+        await loadEvents(dir, { registry, logger });
+        throw new Error("expected loadEvents to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ModuleValidationError);
+        expect((error as ModuleValidationError).issues).toEqual([{ file: "broken.js", message: "missing `execute`" }]);
+      }
     });
   });
 
-  test("throws EventError when the default export has no name", async () => {
+  test("throws ModuleValidationError naming exactly `name` as missing when the default export has no name", async () => {
     await withTempDir({ "broken.js": "export default { execute: () => {} };" }, async (dir) => {
       const registry = new EventRegistry();
-      await expect(loadEvents(dir, { registry, logger })).rejects.toBeInstanceOf(EventError);
+      try {
+        await loadEvents(dir, { registry, logger });
+        throw new Error("expected loadEvents to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ModuleValidationError);
+        expect((error as ModuleValidationError).issues).toEqual([{ file: "broken.js", message: "missing `name`" }]);
+      }
     });
   });
 
-  test("throws EventError, not a silent skip, when a module fails to import", async () => {
+  test("throws ModuleValidationError, not a silent skip, when a module fails to import", async () => {
     await withTempDir({ "broken.js": "throw new Error('boom during import');" }, async (dir) => {
       const registry = new EventRegistry();
-      await expect(loadEvents(dir, { registry, logger })).rejects.toBeInstanceOf(EventError);
+      try {
+        await loadEvents(dir, { registry, logger });
+        throw new Error("expected loadEvents to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ModuleValidationError);
+        expect((error as ModuleValidationError).issues[0]?.message).toContain("boom during import");
+      }
       expect(registry.size).toBe(0);
     });
   });

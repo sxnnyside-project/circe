@@ -2,9 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ComponentError } from "../../../src/discord/components/errors.js";
 import { loadComponents } from "../../../src/discord/components/loader.js";
 import { ComponentRegistry } from "../../../src/discord/components/registry.js";
+import { DiscoveryConflictError } from "../../../src/errors/discovery-conflict-error.js";
+import { ModuleValidationError } from "../../../src/errors/module-validation-error.js";
 import { createLogger } from "../../../src/logging/logger.js";
 
 async function withTempDir(files: Record<string, string>, fn: (dir: string) => Promise<void>): Promise<void> {
@@ -55,32 +56,56 @@ describe("loadComponents", () => {
     );
   });
 
-  test("throws ComponentError when the default export has no execute function", async () => {
+  test("throws ModuleValidationError naming exactly `execute` as missing when the default export has no execute function", async () => {
     await withTempDir({ "broken.js": 'export default { prefix: "crate:" };' }, async (dir) => {
       const registry = new ComponentRegistry();
-      await expect(loadComponents(dir, { registry, logger })).rejects.toBeInstanceOf(ComponentError);
+      try {
+        await loadComponents(dir, { registry, logger });
+        throw new Error("expected loadComponents to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ModuleValidationError);
+        expect((error as ModuleValidationError).issues).toEqual([{ file: "broken.js", message: "missing `execute`" }]);
+      }
     });
   });
 
-  test("throws ComponentError when the default export has no prefix", async () => {
+  test("throws ModuleValidationError naming exactly `prefix` as missing when the default export has no prefix", async () => {
     await withTempDir({ "broken.js": "export default { execute: async () => {} };" }, async (dir) => {
       const registry = new ComponentRegistry();
-      await expect(loadComponents(dir, { registry, logger })).rejects.toBeInstanceOf(ComponentError);
+      try {
+        await loadComponents(dir, { registry, logger });
+        throw new Error("expected loadComponents to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ModuleValidationError);
+        expect((error as ModuleValidationError).issues).toEqual([{ file: "broken.js", message: "missing `prefix`" }]);
+      }
     });
   });
 
-  test("throws ComponentError, not a silent skip, when a module fails to import", async () => {
+  test("throws ModuleValidationError, not a silent skip, when a module fails to import", async () => {
     await withTempDir({ "broken.js": "throw new Error('boom during import');" }, async (dir) => {
       const registry = new ComponentRegistry();
-      await expect(loadComponents(dir, { registry, logger })).rejects.toBeInstanceOf(ComponentError);
+      try {
+        await loadComponents(dir, { registry, logger });
+        throw new Error("expected loadComponents to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ModuleValidationError);
+        expect((error as ModuleValidationError).issues[0]?.message).toContain("boom during import");
+      }
       expect(registry.size).toBe(0);
     });
   });
 
-  test("surfaces duplicate prefixes discovered across two files, nested or not", async () => {
+  test("surfaces duplicate prefixes discovered across two files, nested or not, as DiscoveryConflictError", async () => {
     await withTempDir({ "a.js": VALID_SAVE, "crate/b.js": VALID_SAVE }, async (dir) => {
       const registry = new ComponentRegistry();
-      await expect(loadComponents(dir, { registry, logger })).rejects.toBeInstanceOf(ComponentError);
+      try {
+        await loadComponents(dir, { registry, logger });
+        throw new Error("expected loadComponents to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(DiscoveryConflictError);
+        expect((error as DiscoveryConflictError).identity).toBe("crate:save:");
+      }
     });
   });
 });

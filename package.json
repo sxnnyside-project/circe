@@ -1,6 +1,6 @@
 {
   "name": "@sxnnyside/circe",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "TypeScript/Bun-first Discord bot framework for the Sxnnyside Project ecosystem.",
   "type": "module",
   "license": "MIT",
@@ -20,36 +20,57 @@
     "discord-bot",
     "framework",
     "bun",
+    "node",
+    "deno",
     "typescript",
     "sxnnyside"
   ],
   "engines": {
-    "bun": ">=1.2.0"
+    "node": ">=22.0.0",
+    "bun": ">=1.4.0"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "circe": "./dist/cli/index.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./testing": {
       "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js",
       "default": "./dist/testing/index.js"
+    },
+    "./bun-sqlite": {
+      "types": "./dist/bun-sqlite.d.ts",
+      "import": "./dist/bun-sqlite.js",
+      "default": "./dist/bun-sqlite.js"
+    },
+    "./cli": {
+      "types": "./dist/cli/index.d.ts",
+      "import": "./dist/cli/index.js",
+      "default": "./dist/cli/index.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "dev": "bun run --watch src/index.ts",
-    "build": "bun build ./src/index.ts ./src/testing/index.ts --outdir ./dist --target node --format esm --external discord.js && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "build": "bun build ./src/index.ts ./src/testing/index.ts ./src/cli/index.ts ./src/bun-sqlite.ts --outdir ./dist --target node --format esm --splitting --external discord.js && tsc -p tsconfig.build.json --emitDeclarationOnly && chmod +x ./dist/cli/index.js",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
+    "test:coverage": "bun scripts/coverage.ts",
+    "bench": "bun scripts/bench/run.mjs",
     "lint": "biome lint .",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "check": "biome check . && bun run typecheck && bun test && bun run build",
+    "check": "biome check . && bun run typecheck && bun run test:coverage && bun run build",
     "clean": "rm -rf dist",
     "prepare": "husky",
     "prepublishOnly": "bun run check"

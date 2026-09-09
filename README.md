@@ -1,12 +1,12 @@
 # Circe
 
-![Version](https://img.shields.io/badge/version-0.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.0.0-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
 [![CI](https://github.com/sxnnyside-project/circe/workflows/CI/badge.svg)](https://github.com/sxnnyside-project/circe/actions)
 
 <p align="center">
-  <strong>TypeScript-first ✦ Bun-native ✦ Infrastructure, not opinions</strong><br>
-  <em>A shared Discord bot framework built on discord.js.</em>
+  <strong>Inversion of Control ✦ Dual-Transport (Gateway & HTTP) ✦ Cross-Runtime</strong><br>
+  <em>The TypeScript Discord application framework with file-system conventions for Bun, Node.js 22+, and Deno.</em>
 </p>
 
 <p align="center">
@@ -22,104 +22,120 @@
 
 ## About
 
-**Circe** is a TypeScript/Bun-first framework for building Discord bots, built on top of `discord.js`.
+**Circe** is an inversion-of-control application framework for Discord bots, built on top of `discord.js`.
 
-It provides the shared infrastructure a Discord bot needs — lifecycle, configuration, structured logging, correlation context, command/event handling, and error handling — so that bots don't each reimplement the same plumbing independently.
+Most Discord bot stacks in TypeScript are built as imperative scripts. Developers manually instantiate a client, write custom filesystem loaders to discover commands, handle nested subcommands with repetitive switch statements, parse dynamic `customId` strings with manual string splitting, and maintain 24/7 stateful WebSocket Gateway connections when stateless HTTP Webhooks would suffice. As bots scale, this glue code accumulates and fails silently at runtime.
 
-It sits strictly below the application layer: it provides framework/infrastructure primitives, never business logic, moderation rules, or bot-specific behavior. Its public API is not yet considered stable.
+Circe eliminates this boilerplate by inverting process control: the `circe` CLI owns the application lifecycle, discovers commands and event listeners by directory convention, validates module shapes at scan-time with compiler-grade diagnostics, and routes interactions over Gateway WebSockets, serverless HTTP Webhooks, or hybrid mode without modifying a single line of interaction logic.
 
 ### Philosophy
 
 > _"Infrastructure should be boring, shared, and derived from what bots actually need."_
 
-This is a Sxnnyside Project repository, part of the ecosystem's shared tooling.
+This is a Sxnnyside Project, part of the ecosystem's shared infrastructure.
 
 ## Features
 
-- **Lifecycle State Machine**: Explicit `created → starting → running → stopping → stopped` runtime flow with graceful shutdown, idempotent stop, and default process-level signal/crash handling.
-- **Structured Logging**: Leveled logging with structured output (pretty console in development, JSON in production) and configurable sinks.
-- **Correlation IDs**: Transparent `AsyncLocalStorage` context propagation, automatically attaching correlation IDs to all logs generated during commands and events.
-- **Config Validation**: `defineConfig()` maps and validates environment variables against a bot-supplied Zod schema before gateway connection.
-- **Command Registry**: Dynamic folder-based command loading supporting nested category directories, auto-registration, and guard verification.
-- **Event Dispatcher**: Typed event listeners with isolated error boundaries preventing single handler failures from crashing the client.
-- **Composable Guards**: Composable execution preconditions (`guildOnly`, `hasPermission`) to validate contexts before running handlers.
-- **Testing Harness**: Dedicated testing subpath (`@sxnnyside/circe/testing`) with mocked interactions and events to test bot code offline.
+- **Inversion of Control CLI**: The `circe` binary owns project scaffolding (`circe init`), startup, hot-reloading development (`circe dev`), production execution (`circe start`), and CI pre-flight contract verification (`circe build`).
+- **File-System Conventions**: Automatic discovery for `commands/`, `command-groups/`, `context-menus/`, `events/`, `components/`, and `modals/` with scan-time shape validation.
+- **Dual-Transport Architecture**: Switch seamlessly between WebSocket Gateway, stateless HTTP Webhooks, or hybrid mode directly in `circe.config.ts`.
+- **Sub-Millisecond Ed25519 Web Crypto**: Zero-dependency request signature verification using native `crypto.subtle.verify` on Bun, Node.js 22+, and Deno.
+- **Hierarchical Subcommand Routing**: Automatic nested command tree assembly up to Discord's two-level limit with inherited group-level guards and unified tracing.
+- **Typed Component Routes & Pagination**: Expressive URL-style route patterns (`pattern: "ticket:close:[ticketId]:[action]"`) with full type inference, plus collector-free pagination (`createPaginator`) with optional dropdown navigation (`pageSelect`).
+- **Enterprise Observability & Guards**: Built-in composable `cooldown()` guards (memory or SQLite), correlation IDs via `AsyncLocalStorage`, and global `onError` error reporting.
 
 ## Installation
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) (`>=1.2.0`)
-- `discord.js` (`^14.16.0` (peer dependency — installed by the consuming bot))
+- [Bun](https://bun.sh) (`>=1.4.0`), [Node.js](https://nodejs.org) (`>=22.0.0`), or [Deno](https://deno.com) (`>=2.0.0`)
+- `discord.js` (`^14.16.0`) peer dependency
+
+### Package Managers
+
+```bash
+# Bun (Recommended)
+bun add @sxnnyside/circe discord.js zod
+
+# Node.js
+npm install @sxnnyside/circe discord.js zod
+
+# Deno
+deno add npm:@sxnnyside/circe npm:discord.js npm:zod
+```
 
 ### From Source
 
 ```bash
 git clone https://github.com/sxnnyside-project/circe.git
 cd circe
-
 bun install
 ```
 
 ## Usage
 
-Create a bot entrypoint:
+Define your bot configuration at `circe.config.ts`:
 
 ```ts
-import { createCirce, defineConfig } from "circe";
+import { defineCirceConfig, defineConfig } from "@sxnnyside/circe";
+import { GatewayIntentBits } from "discord.js";
 import { z } from "zod";
 
-const config = defineConfig(
-  z.object({
-    token: z.string().min(1),
-    clientId: z.string().min(1),
-    guildId: z.string().optional(), // present → guild-scoped registration; absent → global
-  }),
-);
-
-const app = createCirce({ config: config.load(), intents: [] });
-
-await app.commands.load(new URL("./commands", import.meta.url));
-await app.events.load(new URL("./events", import.meta.url));
-await app.start();
+export default defineCirceConfig({
+  config: defineConfig(
+    z.object({
+      token: z.string().min(1),
+      clientId: z.string().min(1),
+      guildId: z.string().optional(),
+    }),
+  ),
+  intents: [GatewayIntentBits.Guilds],
+  transport: "gateway", // "gateway" | "http" | "hybrid"
+});
 ```
 
-Write a command (e.g., `commands/utility/ping.ts`):
+Create a command in `src/commands/ping.ts`:
 
 ```ts
-import { defineCommand } from "circe";
+import { defineCommand } from "@sxnnyside/circe";
 import { SlashCommandBuilder } from "discord.js";
 
 export default defineCommand({
   builder: new SlashCommandBuilder()
     .setName("ping")
-    .setDescription("Ping the bot"),
+    .setDescription("Replies with Pong"),
   async execute(ctx) {
     await ctx.interaction.reply("Pong!");
   },
 });
 ```
 
-Test your command in isolation (`tests/ping.test.ts`):
+Run the bot via the Circe CLI:
 
-```ts
-import { testCommand } from "circe/testing";
-import pingCommand from "../src/commands/utility/ping.js";
+```bash
+# Scaffold a new project starter
+bun x circe init
 
-const result = await testCommand(pingCommand);
-// Exercises the router, guards, and execute handler offline
+# Development with hot-reload on file changes
+bun x circe dev
+
+# Production runner
+bun x circe start
+
+# Pre-flight contract verification in CI
+bun x circe build
 ```
 
 ## Architecture
 
 ```
 circe/
-├── src/          # Core framework modules and source code
-├── tests/        # Unit tests mirroring the src/ directory
-└── dist/         # Compiled output for publication
+├── src/               # Framework core (CLI, transport, runtime adapters, loaders, routers)
+├── tests/             # Comprehensive behavioral test suites (Gateway, Webhook, CLI, routing)
+└── docs/              # Architectural specifications and module contracts
 ```
 
-For a detailed breakdown, see [CLAUDE.md](CLAUDE.md).
+For a detailed breakdown of specifications and contracts, see [docs/architecture/](docs/architecture/).
 
 ## Contributing
 

@@ -1,7 +1,9 @@
 import type { Client, ClientEvents } from "discord.js";
 import { normalizeError } from "../../errors/normalize-error.js";
-import { withCorrelationId } from "../../logging/context.js";
+import { getCorrelationId, withCorrelationId } from "../../logging/context.js";
 import type { Logger } from "../../logging/logger.js";
+import { reportError } from "../../observability/report-error.js";
+import type { ErrorReporter } from "../../observability/types.js";
 import { EventError } from "./errors.js";
 import type { EventRegistry } from "./registry.js";
 import type { EventDefinition } from "./types.js";
@@ -17,6 +19,7 @@ import type { EventDefinition } from "./types.js";
 export function createEventHandler<EventName extends keyof ClientEvents>(
   event: EventDefinition<EventName>,
   logger: Logger,
+  onError?: ErrorReporter,
 ): (...args: ClientEvents[EventName]) => void {
   return (...args: ClientEvents[EventName]) => {
     void withCorrelationId(async () => {
@@ -37,15 +40,21 @@ export function createEventHandler<EventName extends keyof ClientEvents>(
           event: event.name,
           correlationId: eventError.correlationId,
         });
+        await reportError(
+          onError,
+          eventError,
+          { kind: "event", name: String(event.name), correlationId: getCorrelationId() },
+          logger,
+        );
       }
     });
   };
 }
 
 /** Wires every registered event onto a live discord.js client. discord.js's own emitter remains the event bus. */
-export function attachEvents(client: Client, registry: EventRegistry, logger: Logger): void {
+export function attachEvents(client: Client, registry: EventRegistry, logger: Logger, onError?: ErrorReporter): void {
   for (const event of registry.all) {
-    const handler = createEventHandler(event, logger.child({ event: String(event.name) }));
+    const handler = createEventHandler(event, logger.child({ event: String(event.name) }), onError);
     if (event.once) {
       client.once(event.name, handler as never);
     } else {

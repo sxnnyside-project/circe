@@ -1,7 +1,14 @@
 import { type Client, Events, GuildMember, type Interaction, type ModalSubmitInteraction } from "discord.js";
+import type { MiddlewareModule } from "../../application/middleware.js";
+import { runWithMiddleware } from "../../application/middleware.js";
 import { normalizeError } from "../../errors/normalize-error.js";
+import { IdentityI18nResolver } from "../../i18n/identity-resolver.js";
+import { createTranslator } from "../../i18n/translator.js";
+import type { I18nResolver } from "../../i18n/types.js";
 import { getCorrelationId, withCorrelationId } from "../../logging/context.js";
 import type { Logger } from "../../logging/logger.js";
+import { reportError } from "../../observability/report-error.js";
+import type { ErrorReporter } from "../../observability/types.js";
 import { ModalError } from "./errors.js";
 import type { ModalRegistry } from "./registry.js";
 import type { ModalContext } from "./types.js";
@@ -26,7 +33,14 @@ export interface ModalRouterOptions {
   logger: Logger;
   onUnknownModal?: UnknownModalHandler;
   onModalError?: ModalErrorHandler;
+  middleware?: MiddlewareModule;
+  /** Defaults to a resolver that returns every key verbatim, untranslated. */
+  i18n?: I18nResolver;
+  /** Called for every error this router's boundary catches, decoupled from the user-facing reply — for external reporting (OpenTelemetry, Sentry, metrics). */
+  onError?: ErrorReporter;
 }
+
+const defaultI18nResolver = new IdentityI18nResolver();
 
 async function defaultOnUnknownModal(ctx: ModalContext): Promise<void> {
   ctx.logger.warn("Received submission for an unregistered modal", { customId: ctx.interaction.customId });
@@ -63,6 +77,7 @@ export async function handleModalInteraction(
       user: interaction.user,
       logger,
       correlationId,
+      t: createTranslator(options.i18n ?? defaultI18nResolver, interaction.locale),
     };
 
     const handler = options.registry.resolve(interaction.customId);
@@ -73,7 +88,13 @@ export async function handleModalInteraction(
     }
 
     try {
-      await handler.execute(ctx);
+      await runWithMiddleware(
+        options.middleware,
+        () => ({ kind: "modal", name: interaction.customId, logger, correlationId }),
+        async () => {
+          await handler.execute(ctx);
+        },
+      );
     } catch (error) {
       const normalized = normalizeError(error, `Modal "${interaction.customId}" failed`);
       const modalError =
@@ -84,6 +105,12 @@ export async function handleModalInteraction(
               operational: normalized.operational,
               metadata: { ...normalized.metadata, reason: "execution-failed", customId: interaction.customId },
             });
+      await reportError(
+        options.onError,
+        modalError,
+        { kind: "modal", name: interaction.customId, correlationId },
+        logger,
+      );
       await (options.onModalError ?? defaultOnModalError)(ctx, modalError);
     }
   });

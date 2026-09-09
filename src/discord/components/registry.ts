@@ -1,4 +1,4 @@
-import { ComponentError } from "./errors.js";
+import { DiscoveryConflictError } from "../../errors/discovery-conflict-error.js";
 import type { ComponentDefinition } from "./types.js";
 
 /**
@@ -21,14 +21,17 @@ export class ComponentRegistry {
     const { prefix } = component;
 
     if (!prefix) {
-      throw new ComponentError("Component handler is missing a prefix", {
-        metadata: { reason: "missing-prefix" },
+      throw new DiscoveryConflictError("Component handler is missing a prefix", {
+        category: "components",
+        reason: "missing-identity",
       });
     }
 
     if (this.#handlers.has(prefix)) {
-      throw new ComponentError(`Duplicate component prefix "${prefix}"`, {
-        metadata: { reason: "duplicate", prefix },
+      throw new DiscoveryConflictError(`Duplicate component prefix "${prefix}"`, {
+        category: "components",
+        reason: "duplicate",
+        identity: prefix,
       });
     }
 

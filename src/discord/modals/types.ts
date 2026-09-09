@@ -1,4 +1,5 @@
 import type { Client, Guild, GuildMember, ModalSubmitInteraction, User } from "discord.js";
+import type { Translator } from "../../i18n/translator.js";
 import type { Logger } from "../../logging/logger.js";
 
 export interface ModalContext {
@@ -11,6 +12,8 @@ export interface ModalContext {
   readonly user: User;
   readonly logger: Logger;
   readonly correlationId: string | undefined;
+  /** Translates `key` for `interaction.locale` via whichever `I18nResolver` the bot configured (see i18n.ts). Returns `key` verbatim when none is configured. */
+  readonly t: Translator;
 }
 
 export interface ModalDefinition<Metadata extends Record<string, unknown> = Record<string, never>> {

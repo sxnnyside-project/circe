@@ -11,6 +11,7 @@ function makeCtx(overrides: Partial<CommandContext> = {}): CommandContext {
     user: {} as never,
     logger: {} as never,
     correlationId: undefined,
+    t: (key: string) => key,
     ...overrides,
   };
 }

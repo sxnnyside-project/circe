@@ -17,6 +17,7 @@ function makeCtx(permissions: bigint[], overrides: Partial<CommandContext> = {})
     user: {} as never,
     logger: {} as never,
     correlationId: undefined,
+    t: (key: string) => key,
     ...overrides,
   };
 }

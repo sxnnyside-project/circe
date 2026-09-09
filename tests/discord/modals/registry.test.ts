@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { ModalError } from "../../../src/discord/modals/errors.js";
 import { ModalRegistry } from "../../../src/discord/modals/registry.js";
 import type { ModalDefinition } from "../../../src/discord/modals/types.js";
 import { defineModal } from "../../../src/discord/modals/types.js";
+import { DiscoveryConflictError } from "../../../src/errors/discovery-conflict-error.js";
 
 function makeModal(prefix: string): ModalDefinition {
   return { prefix, execute: async () => {} };
@@ -27,16 +27,29 @@ describe("ModalRegistry", () => {
     expect(registry.resolve("profile:view:1")).toBeUndefined();
   });
 
-  test("throws ModalError on an exact duplicate prefix", () => {
+  test("throws DiscoveryConflictError on an exact duplicate prefix, naming the conflicting identity", () => {
     const registry = new ModalRegistry();
     registry.register(makeModal("curate:submit:"));
 
-    expect(() => registry.register(makeModal("curate:submit:"))).toThrow(ModalError);
+    try {
+      registry.register(makeModal("curate:submit:"));
+      throw new Error("expected registration to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(DiscoveryConflictError);
+      expect((error as DiscoveryConflictError).reason).toBe("duplicate");
+      expect((error as DiscoveryConflictError).identity).toBe("curate:submit:");
+    }
   });
 
-  test("throws ModalError when the prefix is empty", () => {
+  test("throws DiscoveryConflictError when the prefix is empty", () => {
     const registry = new ModalRegistry();
-    expect(() => registry.register(makeModal(""))).toThrow(ModalError);
+    try {
+      registry.register(makeModal(""));
+      throw new Error("expected registration to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(DiscoveryConflictError);
+      expect((error as DiscoveryConflictError).reason).toBe("missing-identity");
+    }
   });
 
   test("resolves the longest (most specific) matching prefix, regardless of registration order", () => {

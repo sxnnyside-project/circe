@@ -1,5 +1,6 @@
 import { Client, type GatewayIntentBits, REST } from "discord.js";
 import { attachAutocompleteRouter } from "../discord/commands/autocomplete.js";
+import { loadCommandGroups } from "../discord/commands/groups/loader.js";
 import { loadCommands } from "../discord/commands/loader.js";
 import { type CommandRest, registerCommands } from "../discord/commands/registration.js";
 import { CommandRegistry } from "../discord/commands/registry.js";
@@ -16,6 +17,14 @@ import {
   type ComponentErrorHandler,
   type UnknownComponentHandler,
 } from "../discord/components/router.js";
+import { loadContextMenuCommands } from "../discord/context-menus/loader.js";
+import { ContextMenuCommandRegistry } from "../discord/context-menus/registry.js";
+import {
+  attachContextMenuRouter,
+  type ContextMenuCommandErrorHandler,
+  type ContextMenuGuardDeniedHandler,
+  type UnknownContextMenuCommandHandler,
+} from "../discord/context-menus/router.js";
 import { attachEvents } from "../discord/events/dispatcher.js";
 import { loadEvents } from "../discord/events/loader.js";
 import { EventRegistry } from "../discord/events/registry.js";
@@ -23,8 +32,11 @@ import { loadModals } from "../discord/modals/loader.js";
 import { ModalRegistry } from "../discord/modals/registry.js";
 import { attachModalRouter, type ModalErrorHandler, type UnknownModalHandler } from "../discord/modals/router.js";
 import { normalizeError } from "../errors/normalize-error.js";
+import type { I18nResolver } from "../i18n/types.js";
 import { createLogger, type Logger } from "../logging/logger.js";
+import type { ErrorReporter } from "../observability/types.js";
 import { Lifecycle, type LifecycleHook, type LifecycleState } from "./lifecycle.js";
+import type { MiddlewareModule } from "./middleware.js";
 
 /**
  * The minimal Discord credential contract every bot needs regardless of
@@ -44,6 +56,19 @@ export interface CirceCommands {
   load(directory: string | URL): Promise<void>;
   /** Registers the current registry contents with Discord (guild-scoped if `guildId` is configured, global otherwise). */
   register(): Promise<void>;
+}
+
+export interface CirceCommandGroups {
+  /** Same registry as `commands` — a group folder assembles into one ordinary registered command. */
+  readonly registry: CommandRegistry;
+  /** Discovers, imports, and registers every group folder found directly under `directory`. */
+  load(directory: string | URL): Promise<void>;
+}
+
+export interface CirceContextMenuCommands {
+  readonly registry: ContextMenuCommandRegistry;
+  /** Discovers, imports, and registers every command under `directory`'s fixed `users/` and `messages/` subfolders. */
+  load(directory: string | URL): Promise<void>;
 }
 
 export interface CirceEvents {
@@ -70,6 +95,8 @@ export interface CirceApp<Config extends CirceCredentials = CirceCredentials> {
   readonly state: LifecycleState;
   readonly client: Client;
   readonly commands: CirceCommands;
+  readonly commandGroups: CirceCommandGroups;
+  readonly contextMenuCommands: CirceContextMenuCommands;
   readonly events: CirceEvents;
   readonly components: CirceComponents;
   readonly modals: CirceModals;
@@ -127,6 +154,18 @@ export interface CreateCirceOptions<Config extends CirceCredentials> {
   onUnknownModal?: UnknownModalHandler;
   /** Called when a modal handler throws. Defaults to a plain ephemeral reply. Override for localized/branded error responses. */
   onModalError?: ModalErrorHandler;
+  /** Called when a context menu interaction names a command that isn't registered. Defaults to a plain ephemeral reply. */
+  onUnknownContextMenuCommand?: UnknownContextMenuCommandHandler;
+  /** Called when a context menu command's guard denies execution. Defaults to a plain ephemeral reply with the guard's reason. */
+  onContextMenuGuardDenied?: ContextMenuGuardDeniedHandler;
+  /** Called when a context menu command throws. Defaults to a plain ephemeral reply. Override for localized/branded error responses. */
+  onContextMenuCommandError?: ContextMenuCommandErrorHandler;
+  /** Runs `before`/`after` around every command, component, modal, and context menu interaction — a bot's `middleware.ts`, or passed directly. */
+  middleware?: MiddlewareModule;
+  /** Resolves `ctx.t(key, params)` across every command, component, modal, and context menu interaction — a bot's `i18n.ts`, or passed directly. Defaults to a resolver that returns keys verbatim, untranslated. */
+  i18n?: I18nResolver;
+  /** Called for every error any router's boundary — or the event dispatcher — catches, decoupled from user-facing replies. For external reporting: OpenTelemetry, Sentry, metrics. */
+  onError?: ErrorReporter;
 }
 
 function installProcessHandlers<Config extends CirceCredentials>(app: CirceApp<Config>): () => void {
@@ -193,6 +232,7 @@ export function createCirce<Config extends CirceCredentials>(options: CreateCirc
   const eventRegistry = new EventRegistry();
   const componentRegistry = new ComponentRegistry();
   const modalRegistry = new ModalRegistry();
+  const contextMenuCommandRegistry = new ContextMenuCommandRegistry();
   const rest = options.rest ?? new REST({ version: "10" }).setToken(options.config.token);
 
   const commands: CirceCommands = {
@@ -205,8 +245,25 @@ export function createCirce<Config extends CirceCredentials>(options: CreateCirc
         clientId: options.config.clientId,
         ...(options.config.guildId !== undefined ? { guildId: options.config.guildId } : {}),
         commands: commandRegistry.all,
+        userContextMenuCommands: contextMenuCommandRegistry.allUser,
+        messageContextMenuCommands: contextMenuCommandRegistry.allMessage,
         logger: logger.child({ component: "commands" }),
       }),
+  };
+
+  const contextMenuCommands: CirceContextMenuCommands = {
+    registry: contextMenuCommandRegistry,
+    load: (directory) =>
+      loadContextMenuCommands(directory, {
+        registry: contextMenuCommandRegistry,
+        logger: logger.child({ component: "commands" }),
+      }),
+  };
+
+  const commandGroups: CirceCommandGroups = {
+    registry: commandRegistry,
+    load: (directory) =>
+      loadCommandGroups(directory, { registry: commandRegistry, logger: logger.child({ component: "commands" }) }),
   };
 
   const events: CirceEvents = {
@@ -234,6 +291,8 @@ export function createCirce<Config extends CirceCredentials>(options: CreateCirc
     logger,
     client,
     commands,
+    commandGroups,
+    contextMenuCommands,
     events,
     components,
     modals,
@@ -249,19 +308,25 @@ export function createCirce<Config extends CirceCredentials>(options: CreateCirc
       // consumer's own onStart hooks) and would otherwise double-attach on
       // a second, invalid call.
       if (lifecycle.state === "created") {
-        attachEvents(client, eventRegistry, logger.child({ component: "events" }));
+        attachEvents(client, eventRegistry, logger.child({ component: "events" }), options.onError);
         attachCommandRouter(client, {
           registry: commandRegistry,
           logger: logger.child({ component: "commands" }),
           ...(options.onUnknownCommand !== undefined ? { onUnknownCommand: options.onUnknownCommand } : {}),
           ...(options.onGuardDenied !== undefined ? { onGuardDenied: options.onGuardDenied } : {}),
           ...(options.onCommandError !== undefined ? { onCommandError: options.onCommandError } : {}),
+          ...(options.middleware !== undefined ? { middleware: options.middleware } : {}),
+          ...(options.i18n !== undefined ? { i18n: options.i18n } : {}),
+          ...(options.onError !== undefined ? { onError: options.onError } : {}),
         });
         attachComponentRouter(client, {
           registry: componentRegistry,
           logger: logger.child({ component: "components" }),
           ...(options.onUnknownComponent !== undefined ? { onUnknownComponent: options.onUnknownComponent } : {}),
           ...(options.onComponentError !== undefined ? { onComponentError: options.onComponentError } : {}),
+          ...(options.middleware !== undefined ? { middleware: options.middleware } : {}),
+          ...(options.i18n !== undefined ? { i18n: options.i18n } : {}),
+          ...(options.onError !== undefined ? { onError: options.onError } : {}),
         });
         attachAutocompleteRouter(client, {
           registry: commandRegistry,
@@ -272,6 +337,25 @@ export function createCirce<Config extends CirceCredentials>(options: CreateCirc
           logger: logger.child({ component: "modals" }),
           ...(options.onUnknownModal !== undefined ? { onUnknownModal: options.onUnknownModal } : {}),
           ...(options.onModalError !== undefined ? { onModalError: options.onModalError } : {}),
+          ...(options.middleware !== undefined ? { middleware: options.middleware } : {}),
+          ...(options.i18n !== undefined ? { i18n: options.i18n } : {}),
+          ...(options.onError !== undefined ? { onError: options.onError } : {}),
+        });
+        attachContextMenuRouter(client, {
+          registry: contextMenuCommandRegistry,
+          logger: logger.child({ component: "commands" }),
+          ...(options.onUnknownContextMenuCommand !== undefined
+            ? { onUnknownContextMenuCommand: options.onUnknownContextMenuCommand }
+            : {}),
+          ...(options.onContextMenuGuardDenied !== undefined
+            ? { onGuardDenied: options.onContextMenuGuardDenied }
+            : {}),
+          ...(options.onContextMenuCommandError !== undefined
+            ? { onContextMenuCommandError: options.onContextMenuCommandError }
+            : {}),
+          ...(options.middleware !== undefined ? { middleware: options.middleware } : {}),
+          ...(options.i18n !== undefined ? { i18n: options.i18n } : {}),
+          ...(options.onError !== undefined ? { onError: options.onError } : {}),
         });
       }
 
@@ -282,6 +366,11 @@ export function createCirce<Config extends CirceCredentials>(options: CreateCirc
 
       if (autoLogin) {
         await client.login(options.config.token);
+      } else {
+        // `login()` is what normally sets the client's REST auth token —
+        // skipping it (HTTP-only transport, tests) must not also break
+        // every REST call `interaction.reply()`/command registration make.
+        client.rest.setToken(options.config.token);
       }
 
       if (autoRegisterCommands) {

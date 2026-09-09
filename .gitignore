@@ -1,7 +1,11 @@
 node_modules/
 dist/
+.tmp-test-groups/
+.tmp-test-cli/
 *.log
 .DS_Store
 .env
 .env.*
 !.env.example
+
+coverage/

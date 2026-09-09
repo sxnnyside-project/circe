@@ -20,9 +20,8 @@ assignees: ""
 
 - OS:
 - Circe version:
-- Bun version: <!-- e.g. Bun 1.2.0 -->
+- Runtime: <!-- e.g. Bun 1.4+, Node 22+, Deno 2+ -->
 
 ## Additional context
 
 <!-- Logs, screenshots, or anything else that helps. Delete if not applicable. -->
-```

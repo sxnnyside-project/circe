@@ -12,6 +12,7 @@ function fakeChatInputInteraction(commandName: string) {
     guild: { id: "guild-1" },
     member: null,
     user: { id: "user-1", username: "tester" },
+    locale: "es-ES",
     isChatInputCommand: () => true,
     isButton: () => false,
     isStringSelectMenu: () => false,
@@ -281,6 +282,192 @@ describe("createCirce", () => {
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(called).toBe(true);
+    await app.stop();
+  });
+
+  test("regression: middleware passed to createCirce runs before/after around a live command interaction", async () => {
+    const order: string[] = [];
+    const app = createCirce({
+      config: baseConfig,
+      intents: [],
+      handleProcessSignals: false,
+      autoLogin: false,
+      rest: stubRest(),
+      middleware: {
+        before: (ctx) => {
+          order.push(`before:${ctx.kind}:${ctx.name}`);
+        },
+        after: (ctx) => {
+          order.push(`after:${ctx.kind}:${ctx.name}`);
+        },
+      },
+    });
+    app.commands.registry.register({
+      builder: new SlashCommandBuilder().setName("ping").setDescription("ping"),
+      execute: () => {
+        order.push("execute");
+      },
+    });
+
+    await app.start();
+    app.client.emit(Events.InteractionCreate, fakeChatInputInteraction("ping") as never);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(order).toEqual(["before:command:ping", "execute", "after:command:ping"]);
+    await app.stop();
+  });
+
+  test("regression: i18n resolver passed to createCirce resolves ctx.t using the interaction's locale", async () => {
+    let capturedLocale: string | undefined;
+    const app = createCirce({
+      config: baseConfig,
+      intents: [],
+      handleProcessSignals: false,
+      autoLogin: false,
+      rest: stubRest(),
+      i18n: {
+        resolve: (key, locale) => {
+          capturedLocale = locale;
+          return `[${locale}] ${key}`;
+        },
+      },
+    });
+
+    let translated: string | undefined;
+    app.commands.registry.register({
+      builder: new SlashCommandBuilder().setName("ping").setDescription("ping"),
+      execute: (ctx) => {
+        translated = ctx.t("greeting.hello");
+      },
+    });
+
+    await app.start();
+    app.client.emit(Events.InteractionCreate, fakeChatInputInteraction("ping") as never);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(capturedLocale).toBe("es-ES");
+    expect(translated).toBe("[es-ES] greeting.hello");
+    await app.stop();
+  });
+
+  test("ctx.t falls back to returning the key verbatim when no i18n resolver is configured", async () => {
+    const app = createCirce({
+      config: baseConfig,
+      intents: [],
+      handleProcessSignals: false,
+      autoLogin: false,
+      rest: stubRest(),
+    });
+
+    let translated: string | undefined;
+    app.commands.registry.register({
+      builder: new SlashCommandBuilder().setName("ping").setDescription("ping"),
+      execute: (ctx) => {
+        translated = ctx.t("greeting.hello");
+      },
+    });
+
+    await app.start();
+    app.client.emit(Events.InteractionCreate, fakeChatInputInteraction("ping") as never);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(translated).toBe("greeting.hello");
+    await app.stop();
+  });
+
+  test("regression: onError passed to createCirce is called for a failing command, alongside onCommandError", async () => {
+    const reported: unknown[] = [];
+    let onCommandErrorCalled = false;
+    const app = createCirce({
+      config: baseConfig,
+      intents: [],
+      handleProcessSignals: false,
+      autoLogin: false,
+      rest: stubRest(),
+      onError: (error, context) => {
+        reported.push({ error, context });
+      },
+      onCommandError: () => {
+        onCommandErrorCalled = true;
+      },
+    });
+    app.commands.registry.register({
+      builder: new SlashCommandBuilder().setName("broken").setDescription("broken"),
+      execute: () => {
+        throw new Error("boom");
+      },
+    });
+
+    await app.start();
+    app.client.emit(Events.InteractionCreate, fakeChatInputInteraction("broken") as never);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(reported).toHaveLength(1);
+    expect((reported[0] as { context: { kind: string; name: string; correlationId: string } }).context).toEqual({
+      kind: "command",
+      name: "broken",
+      correlationId: expect.any(String),
+    });
+    expect(onCommandErrorCalled).toBe(true);
+    await app.stop();
+  });
+
+  test("regression: onError passed to createCirce is called for a failing event handler", async () => {
+    const reported: unknown[] = [];
+    const app = createCirce({
+      config: baseConfig,
+      intents: [],
+      handleProcessSignals: false,
+      autoLogin: false,
+      rest: stubRest(),
+      onError: (error, context) => {
+        reported.push({ error, context });
+      },
+    });
+    app.events.registry.register({
+      name: "guildCreate",
+      execute: () => {
+        throw new Error("event boom");
+      },
+    });
+
+    await app.start();
+    app.client.emit(Events.GuildCreate, {} as never);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(reported).toHaveLength(1);
+    expect((reported[0] as { context: { kind: string; name: string } }).context.kind).toBe("event");
+    expect((reported[0] as { context: { kind: string; name: string } }).context.name).toBe("guildCreate");
+    await app.stop();
+  });
+
+  test("a throwing onError reporter never breaks the normal command error reply", async () => {
+    let replied = false;
+    const app = createCirce({
+      config: baseConfig,
+      intents: [],
+      handleProcessSignals: false,
+      autoLogin: false,
+      rest: stubRest(),
+      onError: () => {
+        throw new Error("reporter exploded");
+      },
+      onCommandError: () => {
+        replied = true;
+      },
+    });
+    app.commands.registry.register({
+      builder: new SlashCommandBuilder().setName("broken").setDescription("broken"),
+      execute: () => {
+        throw new Error("boom");
+      },
+    });
+
+    await app.start();
+    app.client.emit(Events.InteractionCreate, fakeChatInputInteraction("broken") as never);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(replied).toBe(true);
     await app.stop();
   });
 

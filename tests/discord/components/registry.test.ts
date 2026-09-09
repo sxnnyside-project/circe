@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { ComponentError } from "../../../src/discord/components/errors.js";
 import { ComponentRegistry } from "../../../src/discord/components/registry.js";
 import type { ComponentDefinition } from "../../../src/discord/components/types.js";
 import { defineComponent } from "../../../src/discord/components/types.js";
+import { DiscoveryConflictError } from "../../../src/errors/discovery-conflict-error.js";
 
 function makeComponent(prefix: string): ComponentDefinition {
   return { prefix, execute: async () => {} };
@@ -27,16 +27,29 @@ describe("ComponentRegistry", () => {
     expect(registry.resolve("profile:view:1")).toBeUndefined();
   });
 
-  test("throws ComponentError on an exact duplicate prefix", () => {
+  test("throws DiscoveryConflictError on an exact duplicate prefix, naming the conflicting identity", () => {
     const registry = new ComponentRegistry();
     registry.register(makeComponent("crate:save:"));
 
-    expect(() => registry.register(makeComponent("crate:save:"))).toThrow(ComponentError);
+    try {
+      registry.register(makeComponent("crate:save:"));
+      throw new Error("expected registration to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(DiscoveryConflictError);
+      expect((error as DiscoveryConflictError).reason).toBe("duplicate");
+      expect((error as DiscoveryConflictError).identity).toBe("crate:save:");
+    }
   });
 
-  test("throws ComponentError when the prefix is empty", () => {
+  test("throws DiscoveryConflictError when the prefix is empty", () => {
     const registry = new ComponentRegistry();
-    expect(() => registry.register(makeComponent(""))).toThrow(ComponentError);
+    try {
+      registry.register(makeComponent(""));
+      throw new Error("expected registration to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(DiscoveryConflictError);
+      expect((error as DiscoveryConflictError).reason).toBe("missing-identity");
+    }
   });
 
   test("resolves the longest (most specific) matching prefix, regardless of registration order", () => {

@@ -1,4 +1,4 @@
-import { CommandError } from "./errors.js";
+import { DiscoveryConflictError } from "../../errors/discovery-conflict-error.js";
 import type { CommandDefinition } from "./types.js";
 
 /**
@@ -13,14 +13,17 @@ export class CommandRegistry {
     const name = command.builder.name;
 
     if (!name) {
-      throw new CommandError("Command builder is missing a name", {
-        metadata: { reason: "missing-name" },
+      throw new DiscoveryConflictError("Command builder is missing a name", {
+        category: "commands",
+        reason: "missing-identity",
       });
     }
 
     if (this.#commands.has(name)) {
-      throw new CommandError(`Duplicate command name "${name}"`, {
-        metadata: { reason: "duplicate", name },
+      throw new DiscoveryConflictError(`Duplicate command name "${name}"`, {
+        category: "commands",
+        reason: "duplicate",
+        identity: name,
       });
     }
 

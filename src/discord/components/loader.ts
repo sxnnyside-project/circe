@@ -1,6 +1,6 @@
+import { ModuleValidationError } from "../../errors/module-validation-error.js";
 import type { Logger } from "../../logging/logger.js";
 import { discoverModules } from "../module-loader.js";
-import { ComponentError } from "./errors.js";
 import type { ComponentRegistry } from "./registry.js";
 import type { ComponentDefinition } from "./types.js";
 
@@ -9,37 +9,57 @@ export interface LoadComponentsOptions {
   logger: Logger;
 }
 
-/**
- * Recursively discovers component modules under `directory` — category
- * subfolders included — imports each one, validates its default export,
- * and registers it. Mirrors `loadCommands`/`loadEvents`: a malformed
- * module fails loudly rather than being silently skipped.
- */
-export async function loadComponents(directory: string | URL, options: LoadComponentsOptions): Promise<void> {
-  const modules = await discoverModules(directory, (fileName, cause) => {
-    throw new ComponentError(`Failed to import component module "${fileName}"`, {
-      cause,
-      metadata: { reason: "import-failed", file: fileName },
-    });
-  });
-
-  for (const { fileName, value } of modules) {
-    if (!isComponentDefinition(value)) {
-      throw new ComponentError(`Component module "${fileName}" does not export a valid default component definition`, {
-        metadata: { reason: "malformed", file: fileName },
-      });
-    }
-
-    options.registry.register(value);
-    options.logger.debug(`Loaded component handler "${value.prefix}"`, { file: fileName });
-  }
-}
-
-function isComponentDefinition(value: unknown): value is ComponentDefinition {
+function validateComponentShape(value: unknown): string[] {
   if (typeof value !== "object" || value === null) {
-    return false;
+    return ["does not export a default component definition object"];
   }
 
   const candidate = value as Partial<ComponentDefinition>;
-  return typeof candidate.execute === "function" && typeof candidate.prefix === "string";
+  const issues: string[] = [];
+
+  if (typeof candidate.execute !== "function") {
+    issues.push("missing `execute`");
+  }
+  if (typeof candidate.prefix !== "string") {
+    issues.push("missing `prefix`");
+  }
+
+  return issues;
+}
+
+/**
+ * Recursively discovers component modules under `directory` — category
+ * subfolders included — imports each one, validates its default export,
+ * and registers it. Mirrors `loadCommands`/`loadEvents`: every malformed
+ * or unimportable file is aggregated into one `ModuleValidationError`
+ * rather than stopping at the first one.
+ */
+export async function loadComponents(directory: string | URL, options: LoadComponentsOptions): Promise<void> {
+  const { modules, failures } = await discoverModules(directory);
+  const issues = failures.map((failure) => ({
+    file: failure.fileName,
+    message: `Failed to import: ${failure.cause instanceof Error ? failure.cause.message : String(failure.cause)}`,
+  }));
+
+  const valid: { fileName: string; value: ComponentDefinition }[] = [];
+  for (const { fileName, value } of modules) {
+    const shapeIssues = validateComponentShape(value);
+    if (shapeIssues.length > 0) {
+      issues.push(...shapeIssues.map((message) => ({ file: fileName, message })));
+    } else {
+      valid.push({ fileName, value: value as ComponentDefinition });
+    }
+  }
+
+  if (issues.length > 0) {
+    throw new ModuleValidationError(`${issues.length} component module issue(s) found`, {
+      category: "components",
+      issues,
+    });
+  }
+
+  for (const { fileName, value } of valid) {
+    options.registry.register(value);
+    options.logger.debug(`Loaded component handler "${value.prefix}"`, { file: fileName });
+  }
 }
