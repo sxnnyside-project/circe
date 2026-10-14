@@ -1,17 +1,18 @@
-import { type Client, Events, GuildMember, type Interaction } from "discord.js";
-import type { MiddlewareModule } from "../../application/middleware.js";
-import { runWithMiddleware } from "../../application/middleware.js";
-import { normalizeError } from "../../errors/normalize-error.js";
-import { IdentityI18nResolver } from "../../i18n/identity-resolver.js";
-import { createTranslator } from "../../i18n/translator.js";
-import type { I18nResolver } from "../../i18n/types.js";
-import { getCorrelationId, withCorrelationId } from "../../logging/context.js";
-import type { Logger } from "../../logging/logger.js";
-import { reportError } from "../../observability/report-error.js";
-import type { ErrorReporter } from "../../observability/types.js";
-import { ComponentError } from "./errors.js";
-import type { ComponentRegistry } from "./registry.js";
-import type { ComponentContext, ComponentInteraction } from "./types.js";
+import { type Client, Events, GuildMember, type Interaction } from 'discord.js';
+import type { MiddlewareModule } from '../../application/middleware.js';
+import { runWithMiddleware } from '../../application/middleware.js';
+import { normalizeError } from '../../errors/normalize-error.js';
+import { IdentityI18nResolver } from '../../i18n/identity-resolver.js';
+import { createTranslator, i18nContextOf } from '../../i18n/translator.js';
+import type { I18nResolver } from '../../i18n/types.js';
+import { getCorrelationId, withCorrelationId } from '../../logging/context.js';
+import type { Logger } from '../../logging/logger.js';
+import { reportError } from '../../observability/report-error.js';
+import type { ErrorReporter } from '../../observability/types.js';
+import type { GuardResult } from '../commands/types.js';
+import { ComponentError } from './errors.js';
+import type { ComponentRegistry } from './registry.js';
+import type { ComponentContext, ComponentInteraction } from './types.js';
 
 /**
  * Called when a customId doesn't match any registered prefix. The default
@@ -26,13 +27,27 @@ export type UnknownComponentHandler = (ctx: ComponentContext) => void | Promise<
  * calling this. The default logs it and replies with a generic ephemeral
  * message; override for custom user-facing error presentation.
  */
-export type ComponentErrorHandler = (ctx: ComponentContext, error: ComponentError) => void | Promise<void>;
+export type ComponentErrorHandler = (
+  ctx: ComponentContext,
+  error: ComponentError,
+) => void | Promise<void>;
+
+/**
+ * Called when a component guard denies execution. The default replies
+ * with the guard's reason as a plain ephemeral message; override to
+ * localize or brand it.
+ */
+export type ComponentGuardDeniedHandler = (
+  ctx: ComponentContext,
+  reason: string,
+) => void | Promise<void>;
 
 export interface ComponentRouterOptions {
   registry: ComponentRegistry;
   logger: Logger;
   onUnknownComponent?: UnknownComponentHandler;
   onComponentError?: ComponentErrorHandler;
+  onGuardDenied?: ComponentGuardDeniedHandler;
   middleware?: MiddlewareModule;
   /** Defaults to a resolver that returns every key verbatim, untranslated. */
   i18n?: I18nResolver;
@@ -43,13 +58,23 @@ export interface ComponentRouterOptions {
 const defaultI18nResolver = new IdentityI18nResolver();
 
 async function defaultOnUnknownComponent(ctx: ComponentContext): Promise<void> {
-  ctx.logger.warn("Received interaction for an unregistered component", { customId: ctx.interaction.customId });
-  await safeRespond(ctx.interaction, "This action is not currently available.");
+  ctx.logger.warn('Received interaction for an unregistered component', {
+    customId: ctx.interaction.customId,
+  });
+  await safeRespond(ctx.interaction, 'This action is not currently available.');
 }
 
-async function defaultOnComponentError(ctx: ComponentContext, error: ComponentError): Promise<void> {
+async function defaultOnGuardDenied(ctx: ComponentContext, reason: string): Promise<void> {
+  ctx.logger.info('Component blocked by guard', { reason });
+  await safeRespond(ctx.interaction, reason);
+}
+
+async function defaultOnComponentError(
+  ctx: ComponentContext,
+  error: ComponentError,
+): Promise<void> {
   ctx.logger.error(error.message, { error, correlationId: error.correlationId });
-  await safeRespond(ctx.interaction, "Something went wrong while handling that action.");
+  await safeRespond(ctx.interaction, 'Something went wrong while handling that action.');
 }
 
 /**
@@ -76,13 +101,20 @@ export async function handleComponentInteraction(
       user: interaction.user,
       logger,
       correlationId,
-      t: createTranslator(options.i18n ?? defaultI18nResolver, interaction.locale),
+      t: createTranslator(
+        options.i18n ?? defaultI18nResolver,
+        interaction.locale,
+        i18nContextOf(interaction),
+      ),
     };
 
     const handler = options.registry.resolve(interaction.customId);
 
     if (!handler) {
-      await (options.onUnknownComponent ?? defaultOnUnknownComponent)({ ...base, params: undefined });
+      await (options.onUnknownComponent ?? defaultOnUnknownComponent)({
+        ...base,
+        params: undefined,
+      });
       return;
     }
 
@@ -95,9 +127,16 @@ export async function handleComponentInteraction(
     try {
       await runWithMiddleware(
         options.middleware,
-        () => ({ kind: "component", name: interaction.customId, logger, correlationId }),
+        () => ({ kind: 'component', name: interaction.customId, logger, correlationId }),
         async () => {
           ctx = { ...base, params: handler.parse?.(interaction.customId) };
+          for (const guard of handler.guards ?? []) {
+            const result: GuardResult = await guard(ctx);
+            if (result !== true) {
+              await (options.onGuardDenied ?? defaultOnGuardDenied)(ctx, result);
+              return;
+            }
+          }
           await handler.execute(ctx);
         },
       );
@@ -109,12 +148,16 @@ export async function handleComponentInteraction(
           : new ComponentError(normalized.message, {
               cause: normalized,
               operational: normalized.operational,
-              metadata: { ...normalized.metadata, reason: "execution-failed", customId: interaction.customId },
+              metadata: {
+                ...normalized.metadata,
+                reason: 'execution-failed',
+                customId: interaction.customId,
+              },
             });
       await reportError(
         options.onError,
         componentError,
-        { kind: "component", name: interaction.customId, correlationId },
+        { kind: 'component', name: interaction.customId, correlationId },
         logger,
       );
       await (options.onComponentError ?? defaultOnComponentError)(ctx, componentError);

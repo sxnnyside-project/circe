@@ -1,5 +1,5 @@
-import type { ClientEvents } from "discord.js";
-import type { EventDefinition } from "./types.js";
+import type { ClientEvents } from 'discord.js';
+import type { EventDefinition } from './types.js';
 
 /**
  * Holds the events a Circe application knows about. Owned by the

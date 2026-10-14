@@ -1,6 +1,7 @@
-import type { Client, Guild, GuildMember, ModalSubmitInteraction, User } from "discord.js";
-import type { Translator } from "../../i18n/translator.js";
-import type { Logger } from "../../logging/logger.js";
+import type { Client, Guild, GuildMember, ModalSubmitInteraction, User } from 'discord.js';
+import type { Translator } from '../../i18n/translator.js';
+import type { Logger } from '../../logging/logger.js';
+import type { GuardResult } from '../commands/types.js';
 
 export interface ModalContext {
   /** The raw discord.js interaction — never hidden behind a Circe wrapper. */
@@ -16,12 +17,16 @@ export interface ModalContext {
   readonly t: Translator;
 }
 
+export type ModalGuard = (ctx: ModalContext) => GuardResult | Promise<GuardResult>;
+
 export interface ModalDefinition<Metadata extends Record<string, unknown> = Record<string, never>> {
   /**
    * Matches any modal submission whose `customId` starts with this string.
    * Same longest-prefix-match resolution as component routing.
    */
   readonly prefix: string;
+  /** Run in order before `execute`; the first denial short-circuits. */
+  readonly guards?: readonly ModalGuard[];
   /** Same bot-owned metadata bag as `ComponentDefinition.metadata` — Circe never reads it. */
   readonly metadata?: Metadata;
   execute(ctx: ModalContext): void | Promise<void>;

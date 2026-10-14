@@ -1,4 +1,4 @@
-import type { PaginationSession, PaginationStore } from "./types.js";
+import type { PaginationSession, PaginationStore } from './types.js';
 
 const DEFAULT_SWEEP_INTERVAL_MS = 60_000;
 

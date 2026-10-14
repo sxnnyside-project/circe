@@ -1,11 +1,11 @@
-import { CirceError } from "./circe-error.js";
+import { CirceError } from './circe-error.js';
 
 /**
  * Converts an unknown thrown value into a `CirceError`, preserving the
  * original value as `cause`. Values that are already a `CirceError` pass
  * through unchanged so correlation/metadata attached upstream isn't lost.
  */
-export function normalizeError(value: unknown, fallbackMessage = "Unknown error"): CirceError {
+export function normalizeError(value: unknown, fallbackMessage = 'Unknown error'): CirceError {
   if (value instanceof CirceError) {
     return value;
   }

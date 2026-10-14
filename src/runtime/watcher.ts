@@ -1,5 +1,5 @@
-import { existsSync, type FSWatcher, watch as fsWatch } from "node:fs";
-import { detectRuntime } from "./detect.js";
+import { existsSync, type FSWatcher, watch as fsWatch } from 'node:fs';
+import { detectRuntime } from './detect.js';
 
 export interface WatchTarget {
   readonly path: string;
@@ -23,7 +23,9 @@ function createFsWatcher(targets: readonly WatchTarget[]): Watcher {
     start(onChange) {
       handles = targets
         .filter((target) => existsSync(target.path))
-        .map((target) => fsWatch(target.path, { recursive: target.recursive ?? true }, () => onChange()));
+        .map((target) =>
+          fsWatch(target.path, { recursive: target.recursive ?? true }, () => onChange()),
+        );
     },
     stop() {
       for (const handle of handles) {
@@ -44,7 +46,9 @@ function createDenoWatcher(targets: readonly WatchTarget[]): Watcher {
         return;
       }
 
-      const paths = targets.filter((target) => existsSync(target.path)).map((target) => target.path);
+      const paths = targets
+        .filter((target) => existsSync(target.path))
+        .map((target) => target.path);
       void (async () => {
         for await (const _event of deno.watchFs(paths)) {
           if (aborted) {
@@ -69,5 +73,5 @@ function createDenoWatcher(targets: readonly WatchTarget[]): Watcher {
  * the runtime — see runtime-strategy.md.
  */
 export function createWatcher(targets: readonly WatchTarget[]): Watcher {
-  return detectRuntime() === "deno" ? createDenoWatcher(targets) : createFsWatcher(targets);
+  return detectRuntime() === 'deno' ? createDenoWatcher(targets) : createFsWatcher(targets);
 }

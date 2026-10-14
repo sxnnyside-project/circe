@@ -1,15 +1,22 @@
-import { type AutocompleteInteraction, type Client, Events, type Interaction } from "discord.js";
-import { normalizeError } from "../../errors/normalize-error.js";
-import { getCorrelationId, withCorrelationId } from "../../logging/context.js";
-import type { Logger } from "../../logging/logger.js";
-import { CommandError } from "./errors.js";
-import type { CommandRegistry } from "./registry.js";
-import type { AutocompleteContext } from "./types.js";
+import { type AutocompleteInteraction, type Client, Events, type Interaction } from 'discord.js';
+import { normalizeError } from '../../errors/normalize-error.js';
+import { IdentityI18nResolver } from '../../i18n/identity-resolver.js';
+import { createTranslator, i18nContextOf } from '../../i18n/translator.js';
+import type { I18nResolver } from '../../i18n/types.js';
+import { getCorrelationId, withCorrelationId } from '../../logging/context.js';
+import type { Logger } from '../../logging/logger.js';
+import { CommandError } from './errors.js';
+import type { CommandRegistry } from './registry.js';
+import type { AutocompleteContext } from './types.js';
 
 export interface AutocompleteRouterOptions {
   registry: CommandRegistry;
   logger: Logger;
+  /** Defaults to a resolver that returns every key verbatim, untranslated. */
+  i18n?: I18nResolver;
 }
+
+const defaultI18nResolver = new IdentityI18nResolver();
 
 /**
  * Discord requires an autocomplete response within 3 seconds and only
@@ -41,7 +48,7 @@ export async function handleAutocompleteInteraction(
     const command = options.registry.get(interaction.commandName);
 
     if (!command?.autocomplete) {
-      logger.warn("Received autocomplete interaction for a command with no autocomplete handler", {
+      logger.warn('Received autocomplete interaction for a command with no autocomplete handler', {
         command: interaction.commandName,
       });
       await respondEmpty(interaction);
@@ -54,21 +61,36 @@ export async function handleAutocompleteInteraction(
       guild: interaction.guild,
       logger,
       correlationId,
+      t: createTranslator(
+        options.i18n ?? defaultI18nResolver,
+        interaction.locale,
+        i18nContextOf(interaction),
+      ),
     };
 
     try {
       await command.autocomplete(ctx);
     } catch (error) {
-      const normalized = normalizeError(error, `Autocomplete for "${interaction.commandName}" failed`);
+      const normalized = normalizeError(
+        error,
+        `Autocomplete for "${interaction.commandName}" failed`,
+      );
       const commandError =
         normalized instanceof CommandError
           ? normalized
           : new CommandError(normalized.message, {
               cause: normalized,
               operational: normalized.operational,
-              metadata: { ...normalized.metadata, reason: "autocomplete-failed", command: interaction.commandName },
+              metadata: {
+                ...normalized.metadata,
+                reason: 'autocomplete-failed',
+                command: interaction.commandName,
+              },
             });
-      logger.error(commandError.message, { error: commandError, correlationId: commandError.correlationId });
+      logger.error(commandError.message, {
+        error: commandError,
+        correlationId: commandError.correlationId,
+      });
       await respondEmpty(interaction);
     }
   });

@@ -1,4 +1,4 @@
-import { CirceError, type CirceErrorOptions } from "./circe-error.js";
+import { CirceError, type CirceErrorOptions } from './circe-error.js';
 
 export interface ModuleValidationIssue {
   /** The file (relative to the scanned directory) the issue belongs to. */
@@ -7,7 +7,7 @@ export interface ModuleValidationIssue {
   message: string;
 }
 
-export interface ModuleValidationErrorOptions extends Omit<CirceErrorOptions, "metadata"> {
+export interface ModuleValidationErrorOptions extends Omit<CirceErrorOptions, 'metadata'> {
   /** The module category being scanned — `"commands"`, `"events"`, etc. */
   category: string;
   issues: ModuleValidationIssue[];

@@ -1,8 +1,9 @@
-import type { CommandContext, Guard } from "../../commands/types.js";
-import { MemoryCooldownStore } from "./memory-store.js";
-import type { CooldownStore } from "./types.js";
+import type { Guild, User } from 'discord.js';
+import type { GuardResult } from '../../commands/types.js';
+import { MemoryCooldownStore } from './memory-store.js';
+import type { CooldownStore } from './types.js';
 
-export type CooldownScope = "user" | "guild" | "channel";
+export type CooldownScope = 'user' | 'guild' | 'channel';
 
 export interface CooldownOptions {
   readonly durationMs: number;
@@ -11,13 +12,20 @@ export interface CooldownOptions {
   readonly store?: CooldownStore;
 }
 
-function resolveScopeId(ctx: CommandContext, scope: CooldownScope): string | undefined {
+/** The slice of a command or context-menu context this guard reads. */
+export interface CooldownContext {
+  readonly user: User;
+  readonly guild: Guild | null;
+  readonly interaction: { readonly commandName: string; readonly channelId: string | null };
+}
+
+function resolveScopeId(ctx: CooldownContext, scope: CooldownScope): string | undefined {
   switch (scope) {
-    case "user":
+    case 'user':
       return ctx.user.id;
-    case "guild":
+    case 'guild':
       return ctx.guild?.id;
-    case "channel":
+    case 'channel':
       return ctx.interaction.channelId ?? undefined;
   }
 }
@@ -30,7 +38,7 @@ function resolveScopeId(ctx: CommandContext, scope: CooldownScope): string | und
  * boundary to enforce, and a bot that needs a guild present composes this
  * with `guildOnly()` first rather than relying on this guard for that.
  */
-export function cooldown(options: CooldownOptions): Guard {
+export function cooldown(options: CooldownOptions): (ctx: CooldownContext) => Promise<GuardResult> {
   const store = options.store ?? new MemoryCooldownStore();
 
   return async (ctx) => {

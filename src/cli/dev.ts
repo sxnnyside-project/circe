@@ -1,11 +1,11 @@
-import { type ChildProcess, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import type { CirceConfigFile } from "../config/circe-config.js";
-import { createWatcher } from "../runtime/watcher.js";
+import { type ChildProcess, spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import type { CirceConfigFile } from '../config/circe-config.js';
+import { createWatcher } from '../runtime/watcher.js';
 
-const CONFIG_FILE_NAME = "circe.config.ts";
+const CONFIG_FILE_NAME = 'circe.config.ts';
 const RESTART_DEBOUNCE_MS = 150;
 
 /**
@@ -29,21 +29,23 @@ export async function runDev(cwd: string): Promise<void> {
   };
 
   if (imported.default === undefined) {
-    process.stderr.write(`✗ ${CONFIG_FILE_NAME}\n  Must have a default export produced by defineCirceConfig(...).\n`);
+    process.stderr.write(
+      `✗ ${CONFIG_FILE_NAME}\n  Must have a default export produced by defineCirceConfig(...).\n`,
+    );
     process.exitCode = 1;
     return;
   }
 
-  const scanRoot = path.resolve(cwd, imported.default.scanRoot ?? "./src");
-  const cliEntryPath = fileURLToPath(new URL("./index.js", import.meta.url));
+  const scanRoot = path.resolve(cwd, imported.default.scanRoot ?? './src');
+  const cliEntryPath = fileURLToPath(new URL('./index.js', import.meta.url));
 
   let child: ChildProcess | undefined;
   let pendingRestart = false;
   let debounceTimer: NodeJS.Timeout | undefined;
 
   const spawnChild = (): void => {
-    process.stderr.write("→ starting\n");
-    child = spawn(process.execPath, [cliEntryPath, "start"], { cwd, stdio: "inherit" });
+    process.stderr.write('→ starting\n');
+    child = spawn(process.execPath, [cliEntryPath, 'start'], { cwd, stdio: 'inherit' });
   };
 
   const scheduleRestart = (): void => {
@@ -55,11 +57,11 @@ export async function runDev(cwd: string): Promise<void> {
         return;
       }
       pendingRestart = true;
-      process.stderr.write("→ change detected, restarting\n");
+      process.stderr.write('→ change detected, restarting\n');
 
       const previous = child;
       if (previous && previous.exitCode === null && !previous.killed) {
-        previous.once("exit", () => {
+        previous.once('exit', () => {
           pendingRestart = false;
           spawnChild();
         });
@@ -79,8 +81,8 @@ export async function runDev(cwd: string): Promise<void> {
     child?.kill();
     process.exit(0);
   };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 
   spawnChild();
 }

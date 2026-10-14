@@ -1,4 +1,4 @@
-import { createLogger, type LogEntry, type Logger } from "../logging/logger.js";
+import { createLogger, type LogEntry, type Logger } from '../logging/logger.js';
 
 export interface TestLogger {
   readonly logger: Logger;

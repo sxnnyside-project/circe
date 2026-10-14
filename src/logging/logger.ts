@@ -1,8 +1,8 @@
-import { getCorrelationId } from "./context.js";
+import { getCorrelationId } from './context.js';
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
-export type LogEnvironment = "development" | "staging" | "production";
+export type LogEnvironment = 'development' | 'staging' | 'production';
 
 export type LogMetadata = Record<string, unknown>;
 
@@ -60,12 +60,12 @@ function safeStringify(value: unknown): string {
   } catch {
     const seen = new WeakSet();
     return JSON.stringify(value, (_key, v: unknown) => {
-      if (typeof v === "bigint") {
+      if (typeof v === 'bigint') {
         return v.toString();
       }
-      if (typeof v === "object" && v !== null) {
+      if (typeof v === 'object' && v !== null) {
         if (seen.has(v)) {
-          return "[Circular]";
+          return '[Circular]';
         }
         seen.add(v);
       }
@@ -75,23 +75,28 @@ function safeStringify(value: unknown): string {
 }
 
 function defaultSink(environment: LogEnvironment): LogSink {
-  if (environment === "development") {
+  if (environment === 'development') {
     return (entry) => {
-      const meta = Object.keys(entry.metadata).length > 0 ? ` ${safeStringify(entry.metadata)}` : "";
-      const correlation = entry.correlationId ? ` [${entry.correlationId}]` : "";
+      const meta =
+        Object.keys(entry.metadata).length > 0 ? ` ${safeStringify(entry.metadata)}` : '';
+      const correlation = entry.correlationId ? ` [${entry.correlationId}]` : '';
       const line = `${entry.timestamp} ${entry.level.toUpperCase().padEnd(5)}${correlation} ${entry.message}${meta}\n`;
-      const stream = entry.level === "error" || entry.level === "warn" ? process.stderr : process.stdout;
+      const stream =
+        entry.level === 'error' || entry.level === 'warn' ? process.stderr : process.stdout;
       stream.write(line);
     };
   }
 
   return (entry) => {
-    const stream = entry.level === "error" || entry.level === "warn" ? process.stderr : process.stdout;
+    const stream =
+      entry.level === 'error' || entry.level === 'warn' ? process.stderr : process.stdout;
     stream.write(`${safeStringify(entry)}\n`);
   };
 }
 
-function createLoggerInternal(options: Required<Omit<LoggerOptions, "sink">> & { sink: LogSink }): Logger {
+function createLoggerInternal(
+  options: Required<Omit<LoggerOptions, 'sink'>> & { sink: LogSink },
+): Logger {
   const write = (level: LogLevel, message: string, metadata: LogMetadata | undefined): void => {
     if (LEVEL_WEIGHT[level] < LEVEL_WEIGHT[options.level]) {
       return;
@@ -107,10 +112,10 @@ function createLoggerInternal(options: Required<Omit<LoggerOptions, "sink">> & {
   };
 
   return {
-    debug: (message, metadata) => write("debug", message, metadata),
-    info: (message, metadata) => write("info", message, metadata),
-    warn: (message, metadata) => write("warn", message, metadata),
-    error: (message, metadata) => write("error", message, metadata),
+    debug: (message, metadata) => write('debug', message, metadata),
+    info: (message, metadata) => write('info', message, metadata),
+    warn: (message, metadata) => write('warn', message, metadata),
+    error: (message, metadata) => write('error', message, metadata),
     child: (metadata) =>
       createLoggerInternal({
         ...options,
@@ -121,8 +126,8 @@ function createLoggerInternal(options: Required<Omit<LoggerOptions, "sink">> & {
 
 /** Creates a new structured logger. Intentionally thin — no transports, no aggregation. */
 export function createLogger(options: LoggerOptions = {}): Logger {
-  const environment = options.environment ?? "development";
-  const level = options.level ?? (environment === "development" ? "debug" : "info");
+  const environment = options.environment ?? 'development';
+  const level = options.level ?? (environment === 'development' ? 'debug' : 'info');
 
   return createLoggerInternal({
     level,

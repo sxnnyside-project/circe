@@ -1,4 +1,4 @@
-import { getCorrelationId } from "../logging/context.js";
+import { getCorrelationId } from '../logging/context.js';
 
 export interface CirceErrorOptions {
   /** The underlying value/error that caused this one, if any. */
@@ -36,7 +36,7 @@ export class CirceError extends Error {
     this.metadata = options.metadata ?? {};
     this.correlationId = options.correlationId ?? getCorrelationId();
 
-    if (typeof Error.captureStackTrace === "function") {
+    if (typeof Error.captureStackTrace === 'function') {
       Error.captureStackTrace(this, new.target);
     }
   }

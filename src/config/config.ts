@@ -1,5 +1,5 @@
-import type { z } from "zod";
-import { ConfigError, issuesFromZodError } from "./errors.js";
+import type { z } from 'zod';
+import { ConfigError, issuesFromZodError } from './errors.js';
 
 export type ConfigSource = Record<string, string | undefined>;
 

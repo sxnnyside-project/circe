@@ -1,5 +1,5 @@
-import { DiscoveryConflictError } from "../../errors/discovery-conflict-error.js";
-import type { ComponentDefinition } from "./types.js";
+import { DiscoveryConflictError } from '../../errors/discovery-conflict-error.js';
+import type { ComponentDefinition } from './types.js';
 
 /**
  * Holds the component handlers a Circe application knows about. Owned by
@@ -21,16 +21,16 @@ export class ComponentRegistry {
     const { prefix } = component;
 
     if (!prefix) {
-      throw new DiscoveryConflictError("Component handler is missing a prefix", {
-        category: "components",
-        reason: "missing-identity",
+      throw new DiscoveryConflictError('Component handler is missing a prefix', {
+        category: 'components',
+        reason: 'missing-identity',
       });
     }
 
     if (this.#handlers.has(prefix)) {
       throw new DiscoveryConflictError(`Duplicate component prefix "${prefix}"`, {
-        category: "components",
-        reason: "duplicate",
+        category: 'components',
+        reason: 'duplicate',
         identity: prefix,
       });
     }

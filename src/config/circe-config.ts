@@ -1,7 +1,8 @@
-import type { GatewayIntentBits } from "discord.js";
-import type { z } from "zod";
-import type { CirceConfig } from "./config.js";
-import type { CirceIntegration } from "./integration.js";
+import type { ClientOptions, GatewayIntentBits } from 'discord.js';
+import type { z } from 'zod';
+import type { HealthConfig } from '../health/handler.js';
+import type { CirceConfig } from './config.js';
+import type { CirceIntegration } from './integration.js';
 
 /**
  * `"gateway"` (default) — traditional WebSocket connection only.
@@ -11,7 +12,7 @@ import type { CirceIntegration } from "./integration.js";
  * since Discord stops delivering interactions over the gateway once an
  * Interactions Endpoint URL is configured.
  */
-export type TransportMode = "gateway" | "http" | "hybrid";
+export type TransportMode = 'gateway' | 'http' | 'hybrid';
 
 export interface HttpTransportConfig {
   /** Hex-encoded ed25519 public key from the Discord Developer Portal, used to verify incoming requests. */
@@ -23,6 +24,10 @@ export interface HttpTransportConfig {
 export interface CirceConfigFile<Schema extends z.ZodType> {
   readonly config: CirceConfig<Schema>;
   readonly intents: GatewayIntentBits[];
+  /** Remaining discord.js `Client` options: `partials`, `presence`, `allowedMentions`, `makeCache`, `sweepers`, ... */
+  readonly client?: Omit<ClientOptions, 'intents'>;
+  /** Serves `/health` and `/ready`; listens before login. Omit to run no health server. */
+  readonly health?: HealthConfig;
   /** Directory the CLI scans for commands/events/components/modals, relative to `circe.config.ts`. Defaults to `"./src"`. */
   readonly scanRoot?: string;
   /** Named `{ name, setup(context) }` extensions — the sole extension point of `circe.config.ts`. See config-contract.md. */

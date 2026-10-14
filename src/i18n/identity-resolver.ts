@@ -1,4 +1,4 @@
-import type { I18nResolver } from "./types.js";
+import type { I18nResolver } from './types.js';
 
 /**
  * The zero-config default `ctx.t` falls back to when a bot hasn't

@@ -1,42 +1,56 @@
-import { Client, type GatewayIntentBits, REST } from "discord.js";
-import { attachAutocompleteRouter } from "../discord/commands/autocomplete.js";
-import { loadCommandGroups } from "../discord/commands/groups/loader.js";
-import { loadCommands } from "../discord/commands/loader.js";
-import { type CommandRest, registerCommands } from "../discord/commands/registration.js";
-import { CommandRegistry } from "../discord/commands/registry.js";
+import { Client, type ClientOptions, Events, type GatewayIntentBits, REST } from 'discord.js';
+import { attachAutocompleteRouter } from '../discord/commands/autocomplete.js';
+import { loadCommandGroups } from '../discord/commands/groups/loader.js';
+import { loadCommands } from '../discord/commands/loader.js';
+import { type CommandRest, registerCommands } from '../discord/commands/registration.js';
+import { CommandRegistry } from '../discord/commands/registry.js';
 import {
   attachCommandRouter,
   type CommandErrorHandler,
   type GuardDeniedHandler,
   type UnknownCommandHandler,
-} from "../discord/commands/router.js";
-import { loadComponents } from "../discord/components/loader.js";
-import { ComponentRegistry } from "../discord/components/registry.js";
+} from '../discord/commands/router.js';
+import { loadComponents } from '../discord/components/loader.js';
+import { ComponentRegistry } from '../discord/components/registry.js';
 import {
   attachComponentRouter,
   type ComponentErrorHandler,
+  type ComponentGuardDeniedHandler,
   type UnknownComponentHandler,
-} from "../discord/components/router.js";
-import { loadContextMenuCommands } from "../discord/context-menus/loader.js";
-import { ContextMenuCommandRegistry } from "../discord/context-menus/registry.js";
+} from '../discord/components/router.js';
+import { loadContextMenuCommands } from '../discord/context-menus/loader.js';
+import { ContextMenuCommandRegistry } from '../discord/context-menus/registry.js';
 import {
   attachContextMenuRouter,
   type ContextMenuCommandErrorHandler,
   type ContextMenuGuardDeniedHandler,
   type UnknownContextMenuCommandHandler,
-} from "../discord/context-menus/router.js";
-import { attachEvents } from "../discord/events/dispatcher.js";
-import { loadEvents } from "../discord/events/loader.js";
-import { EventRegistry } from "../discord/events/registry.js";
-import { loadModals } from "../discord/modals/loader.js";
-import { ModalRegistry } from "../discord/modals/registry.js";
-import { attachModalRouter, type ModalErrorHandler, type UnknownModalHandler } from "../discord/modals/router.js";
-import { normalizeError } from "../errors/normalize-error.js";
-import type { I18nResolver } from "../i18n/types.js";
-import { createLogger, type Logger } from "../logging/logger.js";
-import type { ErrorReporter } from "../observability/types.js";
-import { Lifecycle, type LifecycleHook, type LifecycleState } from "./lifecycle.js";
-import type { MiddlewareModule } from "./middleware.js";
+} from '../discord/context-menus/router.js';
+import { attachEvents } from '../discord/events/dispatcher.js';
+import { loadEvents } from '../discord/events/loader.js';
+import { EventRegistry } from '../discord/events/registry.js';
+import { loadModals } from '../discord/modals/loader.js';
+import { ModalRegistry } from '../discord/modals/registry.js';
+import {
+  attachModalRouter,
+  type ModalErrorHandler,
+  type ModalGuardDeniedHandler,
+  type UnknownModalHandler,
+} from '../discord/modals/router.js';
+import { normalizeError } from '../errors/normalize-error.js';
+import { createHealthHandler, type HealthConfig } from '../health/handler.js';
+import type { I18nResolver } from '../i18n/types.js';
+import { createLogger, type Logger } from '../logging/logger.js';
+import type { ErrorReporter } from '../observability/types.js';
+import { type InteractionsServer, startInteractionsServer } from '../transport/serve.js';
+import {
+  assertIntervalMs,
+  Lifecycle,
+  type LifecycleHook,
+  type LifecycleState,
+  type ReadyHook,
+} from './lifecycle.js';
+import type { MiddlewareModule } from './middleware.js';
 
 /**
  * The minimal Discord credential contract every bot needs regardless of
@@ -113,13 +127,48 @@ export interface CirceApp<Config extends CirceCredentials = CirceCredentials> {
    * Discord stops sending new interactions before app-level resources tear down.
    */
   onStop(hook: LifecycleHook): void;
+  /**
+   * Registers a hook to run once the gateway connection is ready, with the
+   * logged-in `Client` — for services that need a live client (reminder
+   * delivery, metrics gauges) and so cannot start in `onStart`. Hooks run in
+   * registration order; one that throws is logged and does not stop the
+   * others. Never fires under the HTTP-only transport, which has no gateway
+   * connection.
+   */
+  onReady(hook: ReadyHook): void;
+  /**
+   * Runs `task` every `intervalMs` once the gateway is ready, and stops the
+   * timer when the application stops. Runs never overlap (a tick is skipped
+   * while the previous run is still in flight) and a throwing task is
+   * logged, never fatal. Timing only: the schedule is not persisted, so a
+   * restart begins a fresh interval. Never fires under the HTTP-only
+   * transport.
+   */
+  every(intervalMs: number, task: IntervalTask, options?: IntervalOptions): void;
   start(): Promise<void>;
   stop(): Promise<void>;
+}
+
+export type IntervalTask = (client: Client) => void | Promise<void>;
+
+export interface IntervalOptions {
+  /** Identifies the task in logs. Defaults to `"interval"`. */
+  readonly name?: string;
+  /** Run once as soon as the client is ready instead of waiting a full interval. Defaults to `false`. */
+  readonly runImmediately?: boolean;
 }
 
 export interface CreateCirceOptions<Config extends CirceCredentials> {
   config: Config;
   intents: GatewayIntentBits[];
+  /**
+   * Remaining discord.js `Client` options — `partials`, `presence`,
+   * `allowedMentions`, cache `makeCache`/`sweepers`, `rest`, sharding
+   * `shards`. `intents` stays a top-level option so it is never set twice.
+   */
+  client?: Omit<ClientOptions, 'intents'>;
+  /** Serves `/health` and `/ready` on `health.port`, listening before login. */
+  health?: HealthConfig;
   /** Supply a pre-configured logger; otherwise a default one is created. */
   logger?: Logger;
   /**
@@ -150,6 +199,10 @@ export interface CreateCirceOptions<Config extends CirceCredentials> {
   onUnknownComponent?: UnknownComponentHandler;
   /** Called when a component handler throws. Defaults to a plain ephemeral reply. Override for localized/branded error responses. */
   onComponentError?: ComponentErrorHandler;
+  /** Called when a component guard denies execution. Defaults to a plain ephemeral reply with the guard's reason. */
+  onComponentGuardDenied?: ComponentGuardDeniedHandler;
+  /** Called when a modal guard denies execution. Defaults to a plain ephemeral reply with the guard's reason. */
+  onModalGuardDenied?: ModalGuardDeniedHandler;
   /** Called when a customId doesn't match any registered modal prefix. Defaults to a plain ephemeral reply. */
   onUnknownModal?: UnknownModalHandler;
   /** Called when a modal handler throws. Defaults to a plain ephemeral reply. Override for localized/branded error responses. */
@@ -168,39 +221,47 @@ export interface CreateCirceOptions<Config extends CirceCredentials> {
   onError?: ErrorReporter;
 }
 
-function installProcessHandlers<Config extends CirceCredentials>(app: CirceApp<Config>): () => void {
+function installProcessHandlers<Config extends CirceCredentials>(
+  app: CirceApp<Config>,
+): () => void {
   const onSignal = (signal: NodeJS.Signals): void => {
     app.logger.info(`Received ${signal}, shutting down`, { signal });
     app.stop().catch((error: unknown) => {
-      app.logger.error("Shutdown failed after signal", { error: normalizeError(error) });
+      app.logger.error('Shutdown failed after signal', { error: normalizeError(error) });
       process.exitCode = 1;
     });
   };
 
   const onUncaughtException = (error: unknown): void => {
-    const normalized = normalizeError(error, "Uncaught exception");
-    app.logger.error(normalized.message, { error: normalized, correlationId: normalized.correlationId });
+    const normalized = normalizeError(error, 'Uncaught exception');
+    app.logger.error(normalized.message, {
+      error: normalized,
+      correlationId: normalized.correlationId,
+    });
     process.exitCode = 1;
     void app.stop();
   };
 
   const onUnhandledRejection = (reason: unknown): void => {
-    const normalized = normalizeError(reason, "Unhandled promise rejection");
-    app.logger.error(normalized.message, { error: normalized, correlationId: normalized.correlationId });
+    const normalized = normalizeError(reason, 'Unhandled promise rejection');
+    app.logger.error(normalized.message, {
+      error: normalized,
+      correlationId: normalized.correlationId,
+    });
     process.exitCode = 1;
     void app.stop();
   };
 
-  process.on("SIGINT", onSignal);
-  process.on("SIGTERM", onSignal);
-  process.on("uncaughtException", onUncaughtException);
-  process.on("unhandledRejection", onUnhandledRejection);
+  process.on('SIGINT', onSignal);
+  process.on('SIGTERM', onSignal);
+  process.on('uncaughtException', onUncaughtException);
+  process.on('unhandledRejection', onUnhandledRejection);
 
   return () => {
-    process.off("SIGINT", onSignal);
-    process.off("SIGTERM", onSignal);
-    process.off("uncaughtException", onUncaughtException);
-    process.off("unhandledRejection", onUnhandledRejection);
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
+    process.off('uncaughtException', onUncaughtException);
+    process.off('unhandledRejection', onUnhandledRejection);
   };
 }
 
@@ -220,25 +281,50 @@ function installProcessHandlers<Config extends CirceCredentials>(app: CirceApp<C
  * always run after the client is already destroyed, regardless of when
  * the bot happens to call `app.onStart()`/`app.onStop()`.
  */
-export function createCirce<Config extends CirceCredentials>(options: CreateCirceOptions<Config>): CirceApp<Config> {
-  const logger = options.logger ?? createLogger({ metadata: { component: "circe" } });
-  const lifecycle = new Lifecycle();
+export function createCirce<Config extends CirceCredentials>(
+  options: CreateCirceOptions<Config>,
+): CirceApp<Config> {
+  const logger = options.logger ?? createLogger({ metadata: { component: 'circe' } });
+  const lifecycle = new Lifecycle({
+    onCleanupError: (error) => {
+      logger.error(error.message, { error });
+    },
+  });
   const handleProcessSignals = options.handleProcessSignals ?? true;
   const autoRegisterCommands = options.autoRegisterCommands ?? true;
   const autoLogin = options.autoLogin ?? true;
 
-  const client = new Client({ intents: options.intents });
+  const client = new Client({ ...options.client, intents: options.intents });
+  const readyHooks: ReadyHook[] = [];
+  const intervalStarters: ((readyClient: Client) => void)[] = [];
+  let readyClient: Client | undefined;
+  const intervalTimers: ReturnType<typeof setInterval>[] = [];
+  let healthServer: InteractionsServer | undefined;
+
+  const runReadyHook = async (hook: ReadyHook, readyClient: Client): Promise<void> => {
+    try {
+      await hook(readyClient);
+    } catch (error) {
+      const normalized = normalizeError(error, 'onReady hook failed');
+      logger.error(normalized.message, { error: normalized });
+    }
+  };
   const commandRegistry = new CommandRegistry();
   const eventRegistry = new EventRegistry();
   const componentRegistry = new ComponentRegistry();
   const modalRegistry = new ModalRegistry();
   const contextMenuCommandRegistry = new ContextMenuCommandRegistry();
-  const rest = options.rest ?? new REST({ version: "10" }).setToken(options.config.token);
+  const rest =
+    options.rest ??
+    new REST({ version: '10', ...options.client?.rest }).setToken(options.config.token);
 
   const commands: CirceCommands = {
     registry: commandRegistry,
     load: (directory) =>
-      loadCommands(directory, { registry: commandRegistry, logger: logger.child({ component: "commands" }) }),
+      loadCommands(directory, {
+        registry: commandRegistry,
+        logger: logger.child({ component: 'commands' }),
+      }),
     register: () =>
       registerCommands({
         rest,
@@ -247,7 +333,7 @@ export function createCirce<Config extends CirceCredentials>(options: CreateCirc
         commands: commandRegistry.all,
         userContextMenuCommands: contextMenuCommandRegistry.allUser,
         messageContextMenuCommands: contextMenuCommandRegistry.allMessage,
-        logger: logger.child({ component: "commands" }),
+        logger: logger.child({ component: 'commands' }),
       }),
   };
 
@@ -256,32 +342,44 @@ export function createCirce<Config extends CirceCredentials>(options: CreateCirc
     load: (directory) =>
       loadContextMenuCommands(directory, {
         registry: contextMenuCommandRegistry,
-        logger: logger.child({ component: "commands" }),
+        logger: logger.child({ component: 'commands' }),
       }),
   };
 
   const commandGroups: CirceCommandGroups = {
     registry: commandRegistry,
     load: (directory) =>
-      loadCommandGroups(directory, { registry: commandRegistry, logger: logger.child({ component: "commands" }) }),
+      loadCommandGroups(directory, {
+        registry: commandRegistry,
+        logger: logger.child({ component: 'commands' }),
+      }),
   };
 
   const events: CirceEvents = {
     registry: eventRegistry,
     load: (directory) =>
-      loadEvents(directory, { registry: eventRegistry, logger: logger.child({ component: "events" }) }),
+      loadEvents(directory, {
+        registry: eventRegistry,
+        logger: logger.child({ component: 'events' }),
+      }),
   };
 
   const components: CirceComponents = {
     registry: componentRegistry,
     load: (directory) =>
-      loadComponents(directory, { registry: componentRegistry, logger: logger.child({ component: "components" }) }),
+      loadComponents(directory, {
+        registry: componentRegistry,
+        logger: logger.child({ component: 'components' }),
+      }),
   };
 
   const modals: CirceModals = {
     registry: modalRegistry,
     load: (directory) =>
-      loadModals(directory, { registry: modalRegistry, logger: logger.child({ component: "modals" }) }),
+      loadModals(directory, {
+        registry: modalRegistry,
+        logger: logger.child({ component: 'modals' }),
+      }),
   };
 
   let uninstallProcessHandlers: (() => void) | undefined;
@@ -301,49 +399,119 @@ export function createCirce<Config extends CirceCredentials>(options: CreateCirc
     },
     onStart: (hook) => lifecycle.onStart(hook),
     onStop: (hook) => lifecycle.onStop(hook),
+    onReady: (hook) => {
+      if (readyClient) {
+        void runReadyHook(hook, readyClient);
+      } else {
+        readyHooks.push(hook);
+      }
+    },
+    every(intervalMs, task, intervalOptions = {}) {
+      assertIntervalMs(intervalMs);
+      const name = intervalOptions.name ?? 'interval';
+      let running = false;
+      const tick = async (readyClient: Client): Promise<void> => {
+        if (running) {
+          return;
+        }
+        running = true;
+        try {
+          await task(readyClient);
+        } catch (error) {
+          const normalized = normalizeError(error, `Interval task "${name}" failed`);
+          logger.error(normalized.message, { error: normalized, task: name });
+        } finally {
+          running = false;
+        }
+      };
+      const startTimer = (readyClient: Client): void => {
+        if (lifecycle.state === 'stopping' || lifecycle.state === 'stopped') {
+          return;
+        }
+        const timer = setInterval(() => void tick(readyClient), intervalMs);
+        timer.unref?.();
+        intervalTimers.push(timer);
+        if (intervalOptions.runImmediately) {
+          void tick(readyClient);
+        }
+      };
+      // A registration made after the gateway is already ready starts at once;
+      // otherwise it waits for ready, ahead of the (possibly slow) onReady hooks.
+      if (readyClient) {
+        startTimer(readyClient);
+      } else {
+        intervalStarters.push(startTimer);
+      }
+    },
     async start() {
       // Listener attachment must only ever happen once — guard it the same
       // way `lifecycle.start()` itself guards against a double start, since
       // this runs before that check (deliberately, so it precedes even the
       // consumer's own onStart hooks) and would otherwise double-attach on
       // a second, invalid call.
-      if (lifecycle.state === "created") {
-        attachEvents(client, eventRegistry, logger.child({ component: "events" }), options.onError);
+      if (lifecycle.state === 'created') {
+        client.once(Events.ClientReady, async (ready) => {
+          readyClient = ready;
+          for (const startTimer of intervalStarters) {
+            startTimer(ready);
+          }
+          for (const hook of readyHooks) {
+            await runReadyHook(hook, ready);
+          }
+        });
+        attachEvents(client, eventRegistry, logger.child({ component: 'events' }), options.onError);
         attachCommandRouter(client, {
           registry: commandRegistry,
-          logger: logger.child({ component: "commands" }),
-          ...(options.onUnknownCommand !== undefined ? { onUnknownCommand: options.onUnknownCommand } : {}),
+          logger: logger.child({ component: 'commands' }),
+          ...(options.onUnknownCommand !== undefined
+            ? { onUnknownCommand: options.onUnknownCommand }
+            : {}),
           ...(options.onGuardDenied !== undefined ? { onGuardDenied: options.onGuardDenied } : {}),
-          ...(options.onCommandError !== undefined ? { onCommandError: options.onCommandError } : {}),
+          ...(options.onCommandError !== undefined
+            ? { onCommandError: options.onCommandError }
+            : {}),
           ...(options.middleware !== undefined ? { middleware: options.middleware } : {}),
           ...(options.i18n !== undefined ? { i18n: options.i18n } : {}),
           ...(options.onError !== undefined ? { onError: options.onError } : {}),
         });
         attachComponentRouter(client, {
           registry: componentRegistry,
-          logger: logger.child({ component: "components" }),
-          ...(options.onUnknownComponent !== undefined ? { onUnknownComponent: options.onUnknownComponent } : {}),
-          ...(options.onComponentError !== undefined ? { onComponentError: options.onComponentError } : {}),
+          logger: logger.child({ component: 'components' }),
+          ...(options.onUnknownComponent !== undefined
+            ? { onUnknownComponent: options.onUnknownComponent }
+            : {}),
+          ...(options.onComponentError !== undefined
+            ? { onComponentError: options.onComponentError }
+            : {}),
+          ...(options.onComponentGuardDenied !== undefined
+            ? { onGuardDenied: options.onComponentGuardDenied }
+            : {}),
           ...(options.middleware !== undefined ? { middleware: options.middleware } : {}),
           ...(options.i18n !== undefined ? { i18n: options.i18n } : {}),
           ...(options.onError !== undefined ? { onError: options.onError } : {}),
         });
         attachAutocompleteRouter(client, {
           registry: commandRegistry,
-          logger: logger.child({ component: "commands" }),
+          logger: logger.child({ component: 'commands' }),
+          ...(options.i18n !== undefined ? { i18n: options.i18n } : {}),
         });
         attachModalRouter(client, {
           registry: modalRegistry,
-          logger: logger.child({ component: "modals" }),
-          ...(options.onUnknownModal !== undefined ? { onUnknownModal: options.onUnknownModal } : {}),
+          logger: logger.child({ component: 'modals' }),
+          ...(options.onUnknownModal !== undefined
+            ? { onUnknownModal: options.onUnknownModal }
+            : {}),
           ...(options.onModalError !== undefined ? { onModalError: options.onModalError } : {}),
+          ...(options.onModalGuardDenied !== undefined
+            ? { onGuardDenied: options.onModalGuardDenied }
+            : {}),
           ...(options.middleware !== undefined ? { middleware: options.middleware } : {}),
           ...(options.i18n !== undefined ? { i18n: options.i18n } : {}),
           ...(options.onError !== undefined ? { onError: options.onError } : {}),
         });
         attachContextMenuRouter(client, {
           registry: contextMenuCommandRegistry,
-          logger: logger.child({ component: "commands" }),
+          logger: logger.child({ component: 'commands' }),
           ...(options.onUnknownContextMenuCommand !== undefined
             ? { onUnknownContextMenuCommand: options.onUnknownContextMenuCommand }
             : {}),
@@ -359,45 +527,101 @@ export function createCirce<Config extends CirceCredentials>(options: CreateCirc
         });
       }
 
-      // Consumer-registered onStart hooks (DB connections, service startup, ...)
-      // run here — before login, before registration, before any Discord traffic.
-      // Also where an invalid double-start throws, consistently with Lifecycle's own error.
-      await lifecycle.start();
-
-      if (autoLogin) {
-        await client.login(options.config.token);
-      } else {
-        // `login()` is what normally sets the client's REST auth token —
-        // skipping it (HTTP-only transport, tests) must not also break
-        // every REST call `interaction.reply()`/command registration make.
-        client.rest.setToken(options.config.token);
+      // Health answers `starting` from before any onStart hook runs, so an
+      // orchestrator probing during migrations or login sees a live process
+      // rather than a refused connection.
+      if (options.health && healthServer === undefined) {
+        healthServer = startInteractionsServer({
+          port: options.health.port,
+          ...(options.health.host !== undefined ? { host: options.health.host } : {}),
+          fetch: createHealthHandler({
+            client,
+            expectGateway: autoLogin,
+            isRunning: () => lifecycle.state === 'running',
+            config: options.health,
+            logger: logger.child({ component: 'health' }),
+          }),
+          logger,
+          label: 'Health server',
+        });
       }
 
-      if (autoRegisterCommands) {
-        await commands.register();
+      // Cleanup below is only for the call that actually started the app: a
+      // rejected second `start()` must never tear down the running one.
+      let startedHere = false;
+      try {
+        // Consumer-registered onStart hooks (DB connections, service startup, ...)
+        // run here — before login, before registration, before any Discord traffic.
+        // Also where an invalid double-start throws, consistently with Lifecycle's own error.
+        await lifecycle.start();
+        startedHere = true;
+
+        if (autoLogin) {
+          await client.login(options.config.token);
+        } else {
+          // `login()` is what normally sets the client's REST auth token —
+          // skipping it (HTTP-only transport, tests) must not also break
+          // every REST call `interaction.reply()`/command registration make.
+          client.rest.setToken(options.config.token);
+        }
+
+        if (autoRegisterCommands) {
+          await commands.register();
+        }
+      } catch (error) {
+        // A failed start must not leave a half-alive process behind: a
+        // connected gateway, running stop-hook resources, or a health server
+        // answering for something that will never become ready. A failure
+        // inside `lifecycle.start()` has already run its own cleanup.
+        for (const timer of intervalTimers.splice(0)) {
+          clearInterval(timer);
+        }
+        if (startedHere) {
+          await client.destroy();
+          try {
+            await lifecycle.stop();
+          } catch (stopError) {
+            logger.error('Shutdown after failed start also failed', {
+              error: normalizeError(stopError),
+            });
+          }
+        }
+        if (startedHere || lifecycle.state === 'stopped') {
+          healthServer?.stop();
+          healthServer = undefined;
+        }
+        throw error;
       }
 
       if (handleProcessSignals) {
         uninstallProcessHandlers = installProcessHandlers(app);
       }
 
-      logger.info("Circe application started");
+      logger.info('Circe application started');
     },
     async stop() {
-      if (lifecycle.state === "created" || lifecycle.state === "stopped") {
+      if (lifecycle.state === 'created' || lifecycle.state === 'stopped') {
         await lifecycle.stop();
         return;
       }
 
       uninstallProcessHandlers?.();
       uninstallProcessHandlers = undefined;
+      for (const timer of intervalTimers.splice(0)) {
+        clearInterval(timer);
+      }
       await client.destroy();
 
       // Consumer-registered onStop hooks (closing a DB pool, ...) run after
       // the client stops receiving new interactions, not before.
       await lifecycle.stop();
 
-      logger.info("Circe application stopped");
+      // Last, so readiness keeps reporting not-ready while everything else
+      // tears down.
+      healthServer?.stop();
+      healthServer = undefined;
+
+      logger.info('Circe application stopped');
     },
   };
 

@@ -1,13 +1,13 @@
-import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { existsSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 
 interface ScaffoldFile {
   readonly relativePath: string;
   readonly content: string;
 }
 
-const CONFIG_FILE = "circe.config.ts";
+const CONFIG_FILE = 'circe.config.ts';
 
 const FILES: readonly ScaffoldFile[] = [
   {
@@ -23,7 +23,7 @@ export default defineCirceConfig({
 `,
   },
   {
-    relativePath: "src/config.ts",
+    relativePath: 'src/config.ts',
     content: `import { z } from "zod";
 import { defineConfig } from "@sxnnyside/circe";
 
@@ -35,7 +35,7 @@ export default defineConfig(
 `,
   },
   {
-    relativePath: "src/commands/ping.ts",
+    relativePath: 'src/commands/ping.ts',
     content: `import { SlashCommandBuilder } from "discord.js";
 import { defineCommand } from "@sxnnyside/circe";
 
@@ -48,12 +48,12 @@ export default defineCommand({
 `,
   },
   {
-    relativePath: ".env.example",
+    relativePath: '.env.example',
     content: `DISCORD_TOKEN=
 `,
   },
   {
-    relativePath: ".gitignore",
+    relativePath: '.gitignore',
     content: `node_modules/
 dist/
 .env
@@ -89,7 +89,7 @@ export async function runInit(cwd: string): Promise<InitResult> {
     }
 
     await mkdir(path.dirname(absolutePath), { recursive: true });
-    await writeFile(absolutePath, file.content, "utf8");
+    await writeFile(absolutePath, file.content, 'utf8');
     created.push(file.relativePath);
   }
 
@@ -108,13 +108,13 @@ export function renderInitResult(result: InitResult): string {
 
   if (result.created.length > 0) {
     lines.push(
-      "",
-      "Next steps:",
-      "  1. bun install @sxnnyside/circe discord.js zod",
-      "  2. cp .env.example .env and fill in DISCORD_TOKEN",
-      "  3. bun x circe dev",
+      '',
+      'Next steps:',
+      '  1. bun install @sxnnyside/circe discord.js zod',
+      '  2. cp .env.example .env and fill in DISCORD_TOKEN',
+      '  3. bun x circe dev',
     );
   }
 
-  return lines.join("\n");
+  return lines.join('\n');
 }

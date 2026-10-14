@@ -9,3 +9,6 @@ dist/
 !.env.example
 
 coverage/
+RELEASE_NOTES.md
+dist-node/
+package-lock.json

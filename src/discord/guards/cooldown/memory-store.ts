@@ -1,4 +1,4 @@
-import type { CooldownStore } from "./types.js";
+import type { CooldownStore } from './types.js';
 
 const DEFAULT_SWEEP_INTERVAL_MS = 60_000;
 

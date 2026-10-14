@@ -3,44 +3,101 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
 
 permissions:
-  contents: write
-  # Required for npm's OIDC trusted publisher — no NPM_TOKEN needed, npm
-  # exchanges this job's OIDC token for a short-lived publish credential.
-  id-token: write
+  contents: read
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  verify-version:
+    name: Verify version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          bun-version: "1.4.x"
-
-      - uses: actions/setup-node@v4
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22.x"
-          registry-url: "https://registry.npmjs.org"
+          node-version: 22.14.0
+      - name: Tag is SemVer and matches the manifest
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] \
+            || { echo "::error::tag is not SemVer: $TAG"; exit 1; }
+          manifest="$(node -p "require('./package.json').version")"
+          [ "$manifest" = "$version" ] \
+            || { echo "::error::manifest version ($manifest) does not match tag ($version)"; exit 1; }
+          if npm view "@sxnnyside/circe@$version" version >/dev/null 2>&1; then
+            echo "::error::$version is already published"; exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Tag commit is on the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: git merge-base --is-ancestor "$GITHUB_SHA" "origin/$DEFAULT_BRANCH"
 
-      - name: Upgrade npm for tokenless OIDC Trusted Publishing
-        run: npm install -g npm@11.x
+  check:
+    name: Quality gate
+    needs: verify-version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install just
+        uses: taiki-e/install-action@183e4297cca2404691e9380e1307288dced5c82a # v2.87.25
+        with:
+          tool: just@1.58.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.14.0
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: 2.6.8
+      - run: just install
+      - run: just check
+      - run: just smoke
 
-      - name: Install dependencies
-        run: bun install
-
-      - name: Quality gate (format, lint, typecheck, test, build)
-        run: bun run check
-
+  publish:
+    name: Publish
+    needs: [verify-version, check]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      # npm trusted publishing exchanges this job's OIDC token for a short-lived credential.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install tools
+        uses: taiki-e/install-action@183e4297cca2404691e9380e1307288dced5c82a # v2.87.25
+        with:
+          tool: just@1.58.0,git-cliff@2.14.2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.14.0
+          registry-url: https://registry.npmjs.org
+      - name: Upgrade npm for tokenless OIDC trusted publishing
+        run: npm install -g npm@11.21.0
+      - run: just install
+      - run: just build
+      - name: Release notes from Conventional Commits
+        run: just changelog
       - name: Publish to npm
         run: npm publish --provenance --access public
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          body_path: RELEASE_NOTES.md
+          prerelease: ${{ contains(github.ref_name, '-') }}

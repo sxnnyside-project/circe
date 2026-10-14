@@ -1,15 +1,19 @@
 import type {
+  ApplicationIntegrationType,
   Client,
   Guild,
   GuildMember,
+  InteractionContextType,
+  LocalizationMap,
   Message,
   MessageContextMenuCommandInteraction,
+  PermissionResolvable,
   User,
   UserContextMenuCommandInteraction,
-} from "discord.js";
-import type { Translator } from "../../i18n/translator.js";
-import type { Logger } from "../../logging/logger.js";
-import type { GuardResult } from "../commands/types.js";
+} from 'discord.js';
+import type { Translator } from '../../i18n/translator.js';
+import type { Logger } from '../../logging/logger.js';
+import type { GuardResult } from '../commands/types.js';
 
 export type { GuardResult };
 
@@ -41,9 +45,28 @@ export interface MessageContextMenuCommandContext {
   readonly correlationId: string | undefined;
 }
 
-export type UserCommandGuard = (ctx: UserContextMenuCommandContext) => GuardResult | Promise<GuardResult>;
+/**
+ * Registration-time properties Discord enforces itself, before the menu
+ * entry is even shown. Context menus have no `builder`, so these are the
+ * only way to set them; Circe applies them when it registers the command.
+ */
+export interface ContextMenuRegistrationOptions {
+  /** Hides the entry from members lacking these permissions. `0n` restricts it to administrators; `null` clears any restriction. */
+  readonly defaultMemberPermissions?: PermissionResolvable | null;
+  /** Where the command can be used (guild, bot DM, private channel). */
+  readonly contexts?: readonly InteractionContextType[];
+  /** Which installation types expose the command (guild install, user install). */
+  readonly integrationTypes?: readonly ApplicationIntegrationType[];
+  readonly nameLocalizations?: LocalizationMap;
+}
 
-export interface UserCommandDefinition<Metadata extends Record<string, unknown> = Record<string, never>> {
+export type UserCommandGuard = (
+  ctx: UserContextMenuCommandContext,
+) => GuardResult | Promise<GuardResult>;
+
+export interface UserCommandDefinition<
+  Metadata extends Record<string, unknown> = Record<string, never>,
+> extends ContextMenuRegistrationOptions {
   readonly name: string;
   readonly guards?: readonly UserCommandGuard[];
   readonly metadata?: Metadata;
@@ -57,9 +80,13 @@ export function defineUserCommand<Metadata extends Record<string, unknown> = Rec
   return definition;
 }
 
-export type MessageCommandGuard = (ctx: MessageContextMenuCommandContext) => GuardResult | Promise<GuardResult>;
+export type MessageCommandGuard = (
+  ctx: MessageContextMenuCommandContext,
+) => GuardResult | Promise<GuardResult>;
 
-export interface MessageCommandDefinition<Metadata extends Record<string, unknown> = Record<string, never>> {
+export interface MessageCommandDefinition<
+  Metadata extends Record<string, unknown> = Record<string, never>,
+> extends ContextMenuRegistrationOptions {
   readonly name: string;
   readonly guards?: readonly MessageCommandGuard[];
   readonly metadata?: Metadata;
@@ -67,8 +94,8 @@ export interface MessageCommandDefinition<Metadata extends Record<string, unknow
 }
 
 /** Identity helper — same purpose as `defineCommand`. */
-export function defineMessageCommand<Metadata extends Record<string, unknown> = Record<string, never>>(
-  definition: MessageCommandDefinition<Metadata>,
-): MessageCommandDefinition<Metadata> {
+export function defineMessageCommand<
+  Metadata extends Record<string, unknown> = Record<string, never>,
+>(definition: MessageCommandDefinition<Metadata>): MessageCommandDefinition<Metadata> {
   return definition;
 }

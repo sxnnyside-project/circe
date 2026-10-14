@@ -148,7 +148,7 @@ Optional single-file conventions discovered at the scan root:
 
 - **`middleware.ts`**: Exports global `before` and `after` hooks wrapping command and interaction execution.
 - **`error.ts`**: Exports centralized error formatting and fallback replies when commands fail.
-- **`i18n.ts`**: Exports an `I18nResolver` implementation providing translations for `ctx.t(key, params)` based on `interaction.locale`.
+- **`i18n.ts`**: Exports an `I18nResolver` implementation providing translations for `ctx.t(key, params)` based on `interaction.locale`. `resolve(key, locale, params, context)` also receives an `I18nContext` (`guildId`, `guildLocale`, `userId`), so a per-guild or per-user fallback chain needs no ids smuggled through `params`.
 
 ---
 

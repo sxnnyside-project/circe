@@ -12,16 +12,16 @@
 
 const THRESHOLD = { lines: 85, functions: 75 };
 
-const proc = Bun.spawnSync(["bun", "test", "--coverage", "--coverage-reporter=lcov"], {
-  stdout: "inherit",
-  stderr: "inherit",
+const proc = Bun.spawnSync(['bun', 'test', '--coverage', '--coverage-reporter=lcov'], {
+  stdout: 'inherit',
+  stderr: 'inherit',
 });
 
 if (proc.exitCode !== 0) {
   process.exit(proc.exitCode ?? 1);
 }
 
-const lcov = await Bun.file("coverage/lcov.info").text();
+const lcov = await Bun.file('coverage/lcov.info').text();
 const records = lcov.split(/^end_of_record$/m);
 
 interface FileCoverage {
@@ -38,7 +38,7 @@ for (const record of records) {
   const pathMatch = record.match(/^SF:(.+)$/m);
   if (!pathMatch) continue;
   const path = pathMatch[1].trim();
-  if (!path.startsWith("src/")) continue;
+  if (!path.startsWith('src/')) continue;
 
   const linesFound = Number(record.match(/^LF:(\d+)$/m)?.[1] ?? 0);
   const linesHit = Number(record.match(/^LH:(\d+)$/m)?.[1] ?? 0);
@@ -59,19 +59,20 @@ const totals = files.reduce(
 );
 
 const linePct = totals.linesFound === 0 ? 100 : (totals.linesHit / totals.linesFound) * 100;
-const fnPct = totals.functionsFound === 0 ? 100 : (totals.functionsHit / totals.functionsFound) * 100;
+const fnPct =
+  totals.functionsFound === 0 ? 100 : (totals.functionsHit / totals.functionsFound) * 100;
 
 const under = files
   .map((f) => ({ ...f, pct: f.linesFound === 0 ? 100 : (f.linesHit / f.linesFound) * 100 }))
   .filter((f) => f.pct < THRESHOLD.lines)
   .sort((a, b) => a.pct - b.pct);
 
-console.log("\nsrc/ coverage (fixture files under tmp/.tmp-test-cli excluded):");
+console.log('\nsrc/ coverage (fixture files under tmp/.tmp-test-cli excluded):');
 console.log(`  lines:     ${linePct.toFixed(2)}% (${totals.linesHit}/${totals.linesFound})`);
 console.log(`  functions: ${fnPct.toFixed(2)}% (${totals.functionsHit}/${totals.functionsFound})`);
 
 if (under.length > 0) {
-  console.log("\nFiles below the line-coverage threshold:");
+  console.log('\nFiles below the line-coverage threshold:');
   for (const f of under) {
     console.log(`  ${f.pct.toFixed(2)}%  ${f.path}`);
   }
@@ -85,4 +86,4 @@ if (failed) {
   process.exit(1);
 }
 
-console.log("\nCoverage gate passed.");
+console.log('\nCoverage gate passed.');

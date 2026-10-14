@@ -1,7 +1,6 @@
 /** Extracts `"userId" | "action"` from `"ticket:close:[userId]:[action]"`. */
-export type ParamNames<Pattern extends string> = Pattern extends `${string}[${infer Name}]${infer Rest}`
-  ? Name | ParamNames<Rest>
-  : never;
+export type ParamNames<Pattern extends string> =
+  Pattern extends `${string}[${infer Name}]${infer Rest}` ? Name | ParamNames<Rest> : never;
 
 /** The typed `ctx.params` shape a `pattern` string produces. */
 export type ParamsFromPattern<Pattern extends string> = { [K in ParamNames<Pattern>]: string };
@@ -14,7 +13,7 @@ export interface CompiledPattern {
 const PLACEHOLDER = /^\[[^[\]:]+\]$/;
 
 function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
@@ -30,7 +29,7 @@ function escapeRegExp(value: string): string {
  * never `:` itself.
  */
 export function compilePattern(pattern: string): CompiledPattern {
-  const segments = pattern.split(":");
+  const segments = pattern.split(':');
   const staticSegments: string[] = [];
   let splitIndex = 0;
 
@@ -42,20 +41,22 @@ export function compilePattern(pattern: string): CompiledPattern {
   }
 
   if (staticSegments.length === 0) {
-    throw new Error(`Pattern "${pattern}" must start with at least one static segment before a "[param]"`);
+    throw new Error(
+      `Pattern "${pattern}" must start with at least one static segment before a "[param]"`,
+    );
   }
 
-  const prefix = `${staticSegments.join(":")}:`;
+  const prefix = `${staticSegments.join(':')}:`;
   const paramNames: string[] = [];
   const regexSource = segments
     .map((segment) => {
       if (PLACEHOLDER.test(segment)) {
         paramNames.push(segment.slice(1, -1));
-        return "([^:]+)";
+        return '([^:]+)';
       }
       return escapeRegExp(segment);
     })
-    .join(":");
+    .join(':');
   const regex = new RegExp(`^${regexSource}$`);
 
   return {

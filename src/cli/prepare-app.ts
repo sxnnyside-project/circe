@@ -1,20 +1,24 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
-import type { CirceApp, CirceCredentials } from "../application/app.js";
-import { createCirce } from "../application/app.js";
-import type { ErrorBoundaryModule } from "../application/error-boundary.js";
-import type { MiddlewareModule } from "../application/middleware.js";
-import type { CirceConfigFile, HttpTransportConfig, TransportMode } from "../config/circe-config.js";
-import { resolveIntegrations, type ScanCategory } from "../config/integration.js";
-import { CirceError } from "../errors/circe-error.js";
-import type { I18nResolver } from "../i18n/types.js";
-import type { Logger } from "../logging/logger.js";
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import type { CirceApp, CirceCredentials } from '../application/app.js';
+import { createCirce } from '../application/app.js';
+import type { ErrorBoundaryModule } from '../application/error-boundary.js';
+import type { MiddlewareModule } from '../application/middleware.js';
+import type {
+  CirceConfigFile,
+  HttpTransportConfig,
+  TransportMode,
+} from '../config/circe-config.js';
+import { resolveIntegrations, type ScanCategory } from '../config/integration.js';
+import { CirceError } from '../errors/circe-error.js';
+import type { I18nResolver } from '../i18n/types.js';
+import type { Logger } from '../logging/logger.js';
 
-const CONFIG_FILE_NAME = "circe.config.ts";
-const MIDDLEWARE_FILE_NAME = "middleware.ts";
-const ERROR_BOUNDARY_FILE_NAME = "error.ts";
-const I18N_FILE_NAME = "i18n.ts";
+const CONFIG_FILE_NAME = 'circe.config.ts';
+const MIDDLEWARE_FILE_NAME = 'middleware.ts';
+const ERROR_BOUNDARY_FILE_NAME = 'error.ts';
+const I18N_FILE_NAME = 'i18n.ts';
 
 /** Raised when `circe.config.ts` is missing from the project root. */
 export class ConfigFileNotFoundError extends CirceError {}
@@ -24,8 +28,8 @@ export class ConfigFileInvalidError extends CirceError {}
 
 const LOADERS: Record<ScanCategory, (app: CirceApp, directory: string) => Promise<void>> = {
   commands: (app, directory) => app.commands.load(directory),
-  "command-groups": (app, directory) => app.commandGroups.load(directory),
-  "context-menus": (app, directory) => app.contextMenuCommands.load(directory),
+  'command-groups': (app, directory) => app.commandGroups.load(directory),
+  'context-menus': (app, directory) => app.contextMenuCommands.load(directory),
   events: (app, directory) => app.events.load(directory),
   components: (app, directory) => app.components.load(directory),
   modals: (app, directory) => app.modals.load(directory),
@@ -89,27 +93,33 @@ export async function prepareApp(cwd: string, logger: Logger): Promise<PreparedA
 
   const configFile = imported.default;
   const config = configFile.config.load() as CirceCredentials;
-  const scanRoot = path.resolve(cwd, configFile.scanRoot ?? "./src");
+  const scanRoot = path.resolve(cwd, configFile.scanRoot ?? './src');
   const resolved = await resolveIntegrations(configFile.integrations);
-  const transport = configFile.transport ?? "gateway";
+  const transport = configFile.transport ?? 'gateway';
 
-  if ((transport === "http" || transport === "hybrid") && !configFile.http?.publicKey) {
+  if ((transport === 'http' || transport === 'hybrid') && !configFile.http?.publicKey) {
     throw new ConfigFileInvalidError(
       `transport "${transport}" requires an \`http: { publicKey }\` block in ${CONFIG_FILE_NAME}`,
       { metadata: { file: configFilePath } },
     );
   }
 
-  const middleware = await loadOptionalModule<MiddlewareModule>(path.join(scanRoot, MIDDLEWARE_FILE_NAME));
-  const errorBoundary = await loadOptionalModule<ErrorBoundaryModule>(path.join(scanRoot, ERROR_BOUNDARY_FILE_NAME));
+  const middleware = await loadOptionalModule<MiddlewareModule>(
+    path.join(scanRoot, MIDDLEWARE_FILE_NAME),
+  );
+  const errorBoundary = await loadOptionalModule<ErrorBoundaryModule>(
+    path.join(scanRoot, ERROR_BOUNDARY_FILE_NAME),
+  );
   const i18n = await loadOptionalModule<I18nResolver>(path.join(scanRoot, I18N_FILE_NAME));
 
   const app = createCirce({
     config,
     intents: configFile.intents,
+    ...(configFile.client !== undefined ? { client: configFile.client } : {}),
+    ...(configFile.health !== undefined ? { health: configFile.health } : {}),
     logger,
     // "http"-only transport never opens a gateway connection; "hybrid" still does, for every non-interaction event.
-    autoLogin: transport !== "http",
+    autoLogin: transport !== 'http',
     ...(middleware !== undefined ? { middleware } : {}),
     ...(i18n !== undefined ? { i18n } : {}),
     ...errorBoundary,
@@ -121,8 +131,17 @@ export async function prepareApp(cwd: string, logger: Logger): Promise<PreparedA
   for (const hook of resolved.onStopHooks) {
     app.onStop(hook);
   }
+  for (const hook of resolved.onReadyHooks) {
+    app.onReady(hook);
+  }
+  for (const { intervalMs, task, options } of resolved.intervals) {
+    app.every(intervalMs, task, options);
+  }
 
-  for (const [category, load] of Object.entries(LOADERS) as [ScanCategory, (typeof LOADERS)[ScanCategory]][]) {
+  for (const [category, load] of Object.entries(LOADERS) as [
+    ScanCategory,
+    (typeof LOADERS)[ScanCategory],
+  ][]) {
     const directories = [path.join(scanRoot, category), ...resolved.scanRoots[category]];
     for (const directory of directories) {
       if (existsSync(directory)) {
@@ -134,7 +153,7 @@ export async function prepareApp(cwd: string, logger: Logger): Promise<PreparedA
   if (countRegisteredModules(app) === 0) {
     logger.warn(`No commands, events, components, or modals discovered under ${scanRoot}`, {
       scanRoot,
-      hint: "check `scanRoot` in circe.config.ts if this is unexpected",
+      hint: 'check `scanRoot` in circe.config.ts if this is unexpected',
     });
   }
 

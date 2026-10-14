@@ -1,11 +1,11 @@
-import { describe, expect, test } from "bun:test";
-import { GuildMember } from "discord.js";
-import { ComponentError } from "../../../src/discord/components/errors.js";
-import { ComponentRegistry } from "../../../src/discord/components/registry.js";
-import { handleComponentInteraction } from "../../../src/discord/components/router.js";
-import type { ComponentContext } from "../../../src/discord/components/types.js";
-import { getCorrelationId } from "../../../src/logging/context.js";
-import { createLogger, type LogEntry } from "../../../src/logging/logger.js";
+import { describe, expect, test } from 'bun:test';
+import { GuildMember } from 'discord.js';
+import { ComponentError } from '../../../src/discord/components/errors.js';
+import { ComponentRegistry } from '../../../src/discord/components/registry.js';
+import { handleComponentInteraction } from '../../../src/discord/components/router.js';
+import type { ComponentContext } from '../../../src/discord/components/types.js';
+import { getCorrelationId } from '../../../src/logging/context.js';
+import { createLogger, type LogEntry } from '../../../src/logging/logger.js';
 
 /**
  * A minimal stand-in for a discord.js `ButtonInteraction`/`StringSelectMenuInteraction`.
@@ -19,9 +19,9 @@ function makeInteraction(customId: string, options: { guild?: boolean } = {}) {
     customId,
     deferred: false,
     replied: false,
-    guild: options.guild === false ? null : ({ id: "guild-1" } as never),
+    guild: options.guild === false ? null : ({ id: 'guild-1' } as never),
     member: null,
-    user: { id: "user-1", username: "tester" },
+    user: { id: 'user-1', username: 'tester' },
     client: {} as never,
     reply: async (payload: { content: string; ephemeral?: boolean }) => {
       interaction.replied = true;
@@ -40,11 +40,11 @@ function silentLogger(): { logger: ReturnType<typeof createLogger>; entries: Log
   return { logger: createLogger({ sink: (entry) => entries.push(entry) }), entries };
 }
 
-describe("handleComponentInteraction", () => {
-  test("replies with a fallback message when no prefix matches", async () => {
+describe('handleComponentInteraction', () => {
+  test('replies with a fallback message when no prefix matches', async () => {
     const registry = new ComponentRegistry();
     const { logger } = silentLogger();
-    const { interaction, replies } = makeInteraction("unknown:123");
+    const { interaction, replies } = makeInteraction('unknown:123');
 
     await handleComponentInteraction(interaction as never, { registry, logger });
 
@@ -52,83 +52,83 @@ describe("handleComponentInteraction", () => {
     expect(replies[0]?.ephemeral).toBe(true);
   });
 
-  test("routes a button-style customId to its handler (prefix match)", async () => {
+  test('routes a button-style customId to its handler (prefix match)', async () => {
     const registry = new ComponentRegistry();
     let executed = false;
     registry.register({
-      prefix: "crate:save:",
+      prefix: 'crate:save:',
       execute: (ctx) => {
         executed = true;
-        expect(ctx.interaction.customId).toBe("crate:save:123");
+        expect(ctx.interaction.customId).toBe('crate:save:123');
       },
     });
 
     const { logger } = silentLogger();
-    const { interaction } = makeInteraction("crate:save:123");
+    const { interaction } = makeInteraction('crate:save:123');
 
     await handleComponentInteraction(interaction as never, { registry, logger });
 
     expect(executed).toBe(true);
   });
 
-  test("routes a select-menu-style customId to its handler (same router, same resolution)", async () => {
+  test('routes a select-menu-style customId to its handler (same router, same resolution)', async () => {
     const registry = new ComponentRegistry();
     let executed = false;
     registry.register({
-      prefix: "discover:style:",
+      prefix: 'discover:style:',
       execute: () => {
         executed = true;
       },
     });
 
     const { logger } = silentLogger();
-    const { interaction } = makeInteraction("discover:style:select");
+    const { interaction } = makeInteraction('discover:style:select');
 
     await handleComponentInteraction(interaction as never, { registry, logger });
 
     expect(executed).toBe(true);
   });
 
-  test("a component that throws is caught by the central error boundary and replies safely", async () => {
+  test('a component that throws is caught by the central error boundary and replies safely', async () => {
     const registry = new ComponentRegistry();
     registry.register({
-      prefix: "crate:save:",
+      prefix: 'crate:save:',
       execute: () => {
-        throw new Error("boom");
+        throw new Error('boom');
       },
     });
 
     const { logger, entries } = silentLogger();
-    const { interaction, replies } = makeInteraction("crate:save:1");
+    const { interaction, replies } = makeInteraction('crate:save:1');
 
     await handleComponentInteraction(interaction as never, { registry, logger });
 
     expect(replies).toHaveLength(1);
-    expect(entries.some((entry) => entry.level === "error")).toBe(true);
+    expect(entries.some((entry) => entry.level === 'error')).toBe(true);
   });
 
-  test("regression: an execution failure is logged as a ComponentError, not a generic CirceError", async () => {
+  test('regression: an execution failure is logged as a ComponentError, not a generic CirceError', async () => {
     const registry = new ComponentRegistry();
     registry.register({
-      prefix: "crate:save:",
+      prefix: 'crate:save:',
       execute: () => {
-        throw new Error("boom");
+        throw new Error('boom');
       },
     });
 
     const { logger, entries } = silentLogger();
-    const { interaction } = makeInteraction("crate:save:1");
+    const { interaction } = makeInteraction('crate:save:1');
 
     await handleComponentInteraction(interaction as never, { registry, logger });
 
-    const errorEntry = entries.find((entry) => entry.level === "error");
+    const errorEntry = entries.find((entry) => entry.level === 'error');
     expect(errorEntry?.metadata.error).toBeInstanceOf(ComponentError);
   });
 
-  test("onUnknownComponent overrides the default unregistered-component reply", async () => {
+  test('onUnknownComponent overrides the default unregistered-component reply', async () => {
     const registry = new ComponentRegistry();
     const { logger } = silentLogger();
-    const { interaction, replies } = makeInteraction("unknown:1");
+    const { interaction, replies } = makeInteraction('unknown:1');
 
     let called = false;
     await handleComponentInteraction(interaction as never, {
@@ -136,7 +136,7 @@ describe("handleComponentInteraction", () => {
       logger,
       onUnknownComponent: (ctx) => {
         called = true;
-        expect(ctx.interaction.customId).toBe("unknown:1");
+        expect(ctx.interaction.customId).toBe('unknown:1');
       },
     });
 
@@ -144,17 +144,17 @@ describe("handleComponentInteraction", () => {
     expect(replies).toHaveLength(0);
   });
 
-  test("onComponentError overrides the default error reply and receives a ComponentError", async () => {
+  test('onComponentError overrides the default error reply and receives a ComponentError', async () => {
     const registry = new ComponentRegistry();
     registry.register({
-      prefix: "crate:save:",
+      prefix: 'crate:save:',
       execute: () => {
-        throw new Error("boom");
+        throw new Error('boom');
       },
     });
 
     const { logger } = silentLogger();
-    const { interaction, replies } = makeInteraction("crate:save:1");
+    const { interaction, replies } = makeInteraction('crate:save:1');
 
     let receivedError: ComponentError | undefined;
     await handleComponentInteraction(interaction as never, {
@@ -169,12 +169,12 @@ describe("handleComponentInteraction", () => {
     expect(replies).toHaveLength(0);
   });
 
-  test("establishes a fresh correlation ID for each invocation and attaches it to the context", async () => {
+  test('establishes a fresh correlation ID for each invocation and attaches it to the context', async () => {
     const registry = new ComponentRegistry();
     const seenIds: (string | undefined)[] = [];
 
     registry.register({
-      prefix: "crate:save:",
+      prefix: 'crate:save:',
       execute: (ctx: ComponentContext) => {
         seenIds.push(ctx.correlationId);
         expect(ctx.correlationId).toBe(getCorrelationId());
@@ -183,18 +183,24 @@ describe("handleComponentInteraction", () => {
 
     const { logger } = silentLogger();
 
-    await handleComponentInteraction(makeInteraction("crate:save:1").interaction as never, { registry, logger });
-    await handleComponentInteraction(makeInteraction("crate:save:2").interaction as never, { registry, logger });
+    await handleComponentInteraction(makeInteraction('crate:save:1').interaction as never, {
+      registry,
+      logger,
+    });
+    await handleComponentInteraction(makeInteraction('crate:save:2').interaction as never, {
+      registry,
+      logger,
+    });
 
     expect(seenIds).toHaveLength(2);
     expect(seenIds[0]).toBeDefined();
     expect(seenIds[0]).not.toBe(seenIds[1]);
   });
 
-  test("normalizes ctx.member to null when the interaction did not resolve a cached GuildMember", async () => {
+  test('normalizes ctx.member to null when the interaction did not resolve a cached GuildMember', async () => {
     const registry = new ComponentRegistry();
     registry.register({
-      prefix: "crate:save:",
+      prefix: 'crate:save:',
       execute: (ctx: ComponentContext) => {
         expect(ctx.member).toBeNull();
         expect(ctx.member instanceof GuildMember).toBe(false);
@@ -202,23 +208,23 @@ describe("handleComponentInteraction", () => {
     });
 
     const { logger } = silentLogger();
-    const { interaction } = makeInteraction("crate:save:1");
+    const { interaction } = makeInteraction('crate:save:1');
 
     await handleComponentInteraction(interaction as never, { registry, logger });
   });
 
-  test("ctx.params is undefined when the handler defines no parse()", async () => {
+  test('ctx.params is undefined when the handler defines no parse()', async () => {
     const registry = new ComponentRegistry();
     let seen: unknown;
     registry.register({
-      prefix: "crate:save:",
+      prefix: 'crate:save:',
       execute: (ctx) => {
         seen = ctx.params;
       },
     });
 
     const { logger } = silentLogger();
-    const { interaction } = makeInteraction("crate:save:1");
+    const { interaction } = makeInteraction('crate:save:1');
 
     await handleComponentInteraction(interaction as never, { registry, logger });
     expect(seen).toBeUndefined();
@@ -228,10 +234,10 @@ describe("handleComponentInteraction", () => {
     const registry = new ComponentRegistry();
     let seen: { source: string; sourceId: string } | undefined;
     registry.register({
-      prefix: "crate:save:",
+      prefix: 'crate:save:',
       parse: (customId) => {
-        const [source, sourceId] = customId.slice("crate:save:".length).split(":");
-        return { source: source ?? "", sourceId: sourceId ?? "" };
+        const [source, sourceId] = customId.slice('crate:save:'.length).split(':');
+        return { source: source ?? '', sourceId: sourceId ?? '' };
       },
       execute: (ctx) => {
         seen = ctx.params;
@@ -239,30 +245,30 @@ describe("handleComponentInteraction", () => {
     });
 
     const { logger } = silentLogger();
-    const { interaction } = makeInteraction("crate:save:spotify:abc123");
+    const { interaction } = makeInteraction('crate:save:spotify:abc123');
 
     await handleComponentInteraction(interaction as never, { registry, logger });
-    expect(seen).toEqual({ source: "spotify", sourceId: "abc123" });
+    expect(seen).toEqual({ source: 'spotify', sourceId: 'abc123' });
   });
 
-  test("a parse() that throws is caught by the same error boundary as execute()", async () => {
+  test('a parse() that throws is caught by the same error boundary as execute()', async () => {
     const registry = new ComponentRegistry();
     registry.register({
-      prefix: "crate:save:",
+      prefix: 'crate:save:',
       parse: () => {
-        throw new Error("malformed customId");
+        throw new Error('malformed customId');
       },
       execute: () => {
-        throw new Error("should never run");
+        throw new Error('should never run');
       },
     });
 
     const { logger, entries } = silentLogger();
-    const { interaction, replies } = makeInteraction("crate:save:garbage");
+    const { interaction, replies } = makeInteraction('crate:save:garbage');
 
     await handleComponentInteraction(interaction as never, { registry, logger });
 
     expect(replies).toHaveLength(1);
-    expect(entries.some((entry) => entry.level === "error")).toBe(true);
+    expect(entries.some((entry) => entry.level === 'error')).toBe(true);
   });
 });

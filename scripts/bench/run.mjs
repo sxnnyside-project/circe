@@ -15,7 +15,7 @@
  * `tests/transport/deno-runtime.test.ts` — since not every machine running
  * this benchmark has all three installed.
  */
-import { $ } from "bun";
+import { $ } from 'bun';
 
 const PORT_BASE = 9970;
 const WARMUP_REQUESTS = 200;
@@ -23,16 +23,20 @@ const TOTAL_REQUESTS = 5000;
 const CONCURRENCY = 50;
 
 function toHex(bytes) {
-  return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 async function buildSignedPing() {
-  const keyPair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
-  const publicKey = toHex(await crypto.subtle.exportKey("raw", keyPair.publicKey));
+  const keyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
+  const publicKey = toHex(await crypto.subtle.exportKey('raw', keyPair.publicKey));
   const timestamp = String(Math.floor(Date.now() / 1000));
   const body = JSON.stringify({ type: 1 });
   const signature = toHex(
-    await crypto.subtle.sign("Ed25519", keyPair.privateKey, new TextEncoder().encode(timestamp + body)),
+    await crypto.subtle.sign(
+      'Ed25519',
+      keyPair.privateKey,
+      new TextEncoder().encode(timestamp + body),
+    ),
   );
   return { publicKey, timestamp, body, signature };
 }
@@ -41,7 +45,7 @@ async function waitForServer(url, timeoutMs = 10_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(url, { method: "POST", headers: {}, body: "" });
+      const res = await fetch(url, { method: 'POST', headers: {}, body: '' });
       // Any response at all (even a 401 for missing signature) means the
       // server is up — we only need liveness here, not a valid handshake.
       if (res.status) return;
@@ -55,7 +59,7 @@ async function waitForServer(url, timeoutMs = 10_000) {
 
 async function fireRequest(url, headers, body) {
   const start = performance.now();
-  const res = await fetch(url, { method: "POST", headers, body });
+  const res = await fetch(url, { method: 'POST', headers, body });
   await res.arrayBuffer();
   const elapsed = performance.now() - start;
   return { ok: res.status === 200, elapsed };
@@ -112,16 +116,16 @@ async function benchmarkRuntime(name, command, args, port) {
   const signed = await buildSignedPing();
   const url = `http://localhost:${port}/interactions`;
   const headers = {
-    "x-signature-ed25519": signed.signature,
-    "x-signature-timestamp": signed.timestamp,
-    "content-type": "application/json",
+    'x-signature-ed25519': signed.signature,
+    'x-signature-timestamp': signed.timestamp,
+    'content-type': 'application/json',
   };
 
-  const proc = Bun.spawn([command, ...args, "scripts/bench/server.mjs"], {
+  const proc = Bun.spawn([command, ...args, 'scripts/bench/server.mjs'], {
     cwd: process.cwd(),
     env: { ...process.env, BENCH_PORT: String(port), BENCH_PUBLIC_KEY: signed.publicKey },
-    stdout: "pipe",
-    stderr: "pipe",
+    stdout: 'pipe',
+    stderr: 'pipe',
   });
 
   try {
@@ -144,22 +148,32 @@ async function benchmarkRuntime(name, command, args, port) {
 }
 
 async function main() {
-  const distIndex = Bun.file("dist/index.js");
+  const distIndex = Bun.file('dist/index.js');
   if (!(await distIndex.exists())) {
-    console.log("dist/index.js not found — building first...");
+    console.log('dist/index.js not found — building first...');
     await $`bun run build`.quiet();
   }
 
   const runtimes = [
-    { name: "Bun", command: "bun", args: [], port: PORT_BASE },
-    { name: "Node", command: "node", args: [], port: PORT_BASE + 1 },
-    { name: "Deno", command: "deno", args: ["run", "--allow-net", "--allow-env"], port: PORT_BASE + 2 },
+    { name: 'Bun', command: 'bun', args: [], port: PORT_BASE },
+    { name: 'Node', command: 'node', args: [], port: PORT_BASE + 1 },
+    {
+      name: 'Deno',
+      command: 'deno',
+      args: ['run', '--allow-net', '--allow-env'],
+      port: PORT_BASE + 2,
+    },
   ];
 
   const results = [];
   for (const runtime of runtimes) {
     console.log(`\nRunning ${runtime.name}...`);
-    const result = await benchmarkRuntime(runtime.name, runtime.command, runtime.args, runtime.port);
+    const result = await benchmarkRuntime(
+      runtime.name,
+      runtime.command,
+      runtime.args,
+      runtime.port,
+    );
     results.push(result);
     if (result.skipped) {
       console.log(`  skipped — '${runtime.command}' not found on PATH`);
@@ -170,8 +184,8 @@ async function main() {
     }
   }
 
-  console.log("\n| Runtime | req/s | p50 (ms) | p95 (ms) | p99 (ms) | failures |");
-  console.log("| :--- | ---: | ---: | ---: | ---: | ---: |");
+  console.log('\n| Runtime | req/s | p50 (ms) | p95 (ms) | p99 (ms) | failures |');
+  console.log('| :--- | ---: | ---: | ---: | ---: | ---: |');
   for (const result of results) {
     if (result.skipped) {
       console.log(`| ${result.name} | skipped | — | — | — | — |`);

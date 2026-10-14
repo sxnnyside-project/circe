@@ -1,10 +1,10 @@
-import { CirceError, type CirceErrorOptions } from "./circe-error.js";
+import { CirceError, type CirceErrorOptions } from './circe-error.js';
 
-export interface DiscoveryConflictErrorOptions extends Omit<CirceErrorOptions, "metadata"> {
+export interface DiscoveryConflictErrorOptions extends Omit<CirceErrorOptions, 'metadata'> {
   /** The module category involved — `"commands"`, `"components"`, etc. */
   category: string;
   /** What conflicted — the reason a registration was rejected: a missing identity, or which identity was duplicated. */
-  reason: "missing-identity" | "duplicate";
+  reason: 'missing-identity' | 'duplicate';
   /** The command name / component prefix / etc. involved, when there is one to name. */
   identity?: string;
 }
@@ -16,7 +16,7 @@ export interface DiscoveryConflictErrorOptions extends Omit<CirceErrorOptions, "
  */
 export class DiscoveryConflictError extends CirceError {
   readonly category: string;
-  readonly reason: DiscoveryConflictErrorOptions["reason"];
+  readonly reason: DiscoveryConflictErrorOptions['reason'];
   readonly identity: string | undefined;
 
   constructor(message: string, options: DiscoveryConflictErrorOptions) {

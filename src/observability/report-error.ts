@@ -1,6 +1,6 @@
-import type { CirceError } from "../errors/circe-error.js";
-import type { Logger } from "../logging/logger.js";
-import type { ErrorReportContext, ErrorReporter } from "./types.js";
+import type { CirceError } from '../errors/circe-error.js';
+import type { Logger } from '../logging/logger.js';
+import type { ErrorReportContext, ErrorReporter } from './types.js';
 
 /**
  * Invokes `reporter` (if any) with `error`/`context`, isolating any failure
@@ -21,7 +21,7 @@ export async function reportError(
   try {
     await reporter(error, context);
   } catch (reportingError) {
-    logger.error("Error reporter threw while reporting an error", {
+    logger.error('Error reporter threw while reporting an error', {
       error: reportingError,
       originalError: error,
       context,

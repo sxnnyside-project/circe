@@ -1,8 +1,8 @@
-import { ModuleValidationError } from "../../errors/module-validation-error.js";
-import type { Logger } from "../../logging/logger.js";
-import { discoverModules } from "../module-loader.js";
-import type { CommandRegistry } from "./registry.js";
-import type { CommandDefinition } from "./types.js";
+import { ModuleValidationError } from '../../errors/module-validation-error.js';
+import type { Logger } from '../../logging/logger.js';
+import { discoverModules } from '../module-loader.js';
+import type { CommandRegistry } from './registry.js';
+import type { CommandDefinition } from './types.js';
 
 export interface LoadCommandsOptions {
   registry: CommandRegistry;
@@ -10,20 +10,20 @@ export interface LoadCommandsOptions {
 }
 
 function validateCommandShape(value: unknown): string[] {
-  if (typeof value !== "object" || value === null) {
-    return ["does not export a default command definition object"];
+  if (typeof value !== 'object' || value === null) {
+    return ['does not export a default command definition object'];
   }
 
   const candidate = value as Partial<CommandDefinition>;
   const issues: string[] = [];
 
-  if (typeof candidate.execute !== "function") {
-    issues.push("missing `execute`");
+  if (typeof candidate.execute !== 'function') {
+    issues.push('missing `execute`');
   }
-  if (typeof candidate.builder !== "object" || candidate.builder === null) {
-    issues.push("missing `builder`");
-  } else if (typeof (candidate.builder as { name?: unknown }).name !== "string") {
-    issues.push("`builder` is missing a `name`");
+  if (typeof candidate.builder !== 'object' || candidate.builder === null) {
+    issues.push('missing `builder`');
+  } else if (typeof (candidate.builder as { name?: unknown }).name !== 'string') {
+    issues.push('`builder` is missing a `name`');
   }
 
   return issues;
@@ -36,7 +36,10 @@ function validateCommandShape(value: unknown): string[] {
  * is collected into a single `ModuleValidationError` rather than stopping
  * at the first one, so fixing one issue doesn't just uncover the next.
  */
-export async function loadCommands(directory: string | URL, options: LoadCommandsOptions): Promise<void> {
+export async function loadCommands(
+  directory: string | URL,
+  options: LoadCommandsOptions,
+): Promise<void> {
   const { modules, failures } = await discoverModules(directory);
   const issues = failures.map((failure) => ({
     file: failure.fileName,
@@ -55,7 +58,7 @@ export async function loadCommands(directory: string | URL, options: LoadCommand
 
   if (issues.length > 0) {
     throw new ModuleValidationError(`${issues.length} command module issue(s) found`, {
-      category: "commands",
+      category: 'commands',
       issues,
     });
   }

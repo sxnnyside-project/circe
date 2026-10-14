@@ -1,6 +1,6 @@
-import { readdir } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { readdir } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const MODULE_FILE_PATTERN = /\.(ts|js|mjs|cjs)$/;
 const DECLARATION_FILE_PATTERN = /\.d\.(ts|mts|cts)$/;
@@ -34,7 +34,11 @@ async function findModuleFiles(directoryPath: string): Promise<string[]> {
       continue;
     }
 
-    if (entry.isFile() && MODULE_FILE_PATTERN.test(entry.name) && !DECLARATION_FILE_PATTERN.test(entry.name)) {
+    if (
+      entry.isFile() &&
+      MODULE_FILE_PATTERN.test(entry.name) &&
+      !DECLARATION_FILE_PATTERN.test(entry.name)
+    ) {
       files.push(fullPath);
     }
   }

@@ -1,7 +1,9 @@
-import type { SlashCommandSubcommandBuilder } from "discord.js";
-import type { CommandContext, Guard } from "../types.js";
+import type { SlashCommandSubcommandBuilder } from 'discord.js';
+import type { CommandContext, Guard } from '../types.js';
 
-export interface CommandGroupDefinition<Metadata extends Record<string, unknown> = Record<string, never>> {
+export interface CommandGroupDefinition<
+  Metadata extends Record<string, unknown> = Record<string, never>,
+> {
   readonly name: string;
   readonly description: string;
   /** Run before any child subcommand's own guards — a precondition for the whole group, not a substitute for a leaf's specific ones. */
@@ -10,13 +12,15 @@ export interface CommandGroupDefinition<Metadata extends Record<string, unknown>
 }
 
 /** Identity helper for a group folder's `_group.ts` — same purpose as `defineCommand`. */
-export function defineCommandGroup<Metadata extends Record<string, unknown> = Record<string, never>>(
-  definition: CommandGroupDefinition<Metadata>,
-): CommandGroupDefinition<Metadata> {
+export function defineCommandGroup<
+  Metadata extends Record<string, unknown> = Record<string, never>,
+>(definition: CommandGroupDefinition<Metadata>): CommandGroupDefinition<Metadata> {
   return definition;
 }
 
-export interface SubcommandDefinition<Metadata extends Record<string, unknown> = Record<string, never>> {
+export interface SubcommandDefinition<
+  Metadata extends Record<string, unknown> = Record<string, never>,
+> {
   readonly builder: SlashCommandSubcommandBuilder;
   readonly guards?: readonly Guard[];
   readonly metadata?: Metadata;

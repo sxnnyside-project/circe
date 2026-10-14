@@ -1,8 +1,8 @@
-import type { ClientEvents } from "discord.js";
-import { createEventHandler } from "../discord/events/dispatcher.js";
-import type { EventDefinition } from "../discord/events/types.js";
-import type { LogEntry } from "../logging/logger.js";
-import { createTestLogger } from "./logger.js";
+import type { ClientEvents } from 'discord.js';
+import { createEventHandler } from '../discord/events/dispatcher.js';
+import type { EventDefinition } from '../discord/events/types.js';
+import type { LogEntry } from '../logging/logger.js';
+import { createTestLogger } from './logger.js';
 
 export interface TestEventResult {
   logs: LogEntry[];

@@ -1,5 +1,5 @@
-import { DiscoveryConflictError } from "../../errors/discovery-conflict-error.js";
-import type { ModalDefinition } from "./types.js";
+import { DiscoveryConflictError } from '../../errors/discovery-conflict-error.js';
+import type { ModalDefinition } from './types.js';
 
 /**
  * Holds the modal handlers a Circe application knows about. Same
@@ -13,16 +13,16 @@ export class ModalRegistry {
     const { prefix } = modal;
 
     if (!prefix) {
-      throw new DiscoveryConflictError("Modal handler is missing a prefix", {
-        category: "modals",
-        reason: "missing-identity",
+      throw new DiscoveryConflictError('Modal handler is missing a prefix', {
+        category: 'modals',
+        reason: 'missing-identity',
       });
     }
 
     if (this.#handlers.has(prefix)) {
       throw new DiscoveryConflictError(`Duplicate modal prefix "${prefix}"`, {
-        category: "modals",
-        reason: "duplicate",
+        category: 'modals',
+        reason: 'duplicate',
         identity: prefix,
       });
     }

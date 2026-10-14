@@ -1,9 +1,13 @@
-import { CommandRegistry } from "../discord/commands/registry.js";
-import { handleCommandInteraction } from "../discord/commands/router.js";
-import type { CommandDefinition } from "../discord/commands/types.js";
-import type { LogEntry } from "../logging/logger.js";
-import { createTestInteraction, type TestInteractionOptions, type TestReply } from "./interaction.js";
-import { createTestLogger } from "./logger.js";
+import { CommandRegistry } from '../discord/commands/registry.js';
+import { handleCommandInteraction } from '../discord/commands/router.js';
+import type { CommandDefinition } from '../discord/commands/types.js';
+import type { LogEntry } from '../logging/logger.js';
+import {
+  createTestInteraction,
+  type TestInteractionOptions,
+  type TestReply,
+} from './interaction.js';
+import { createTestLogger } from './logger.js';
 
 export interface TestCommandResult {
   replies: TestReply[];

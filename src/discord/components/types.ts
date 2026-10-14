@@ -1,12 +1,23 @@
-import type { ButtonInteraction, Client, Guild, GuildMember, StringSelectMenuInteraction, User } from "discord.js";
-import type { Translator } from "../../i18n/translator.js";
-import type { Logger } from "../../logging/logger.js";
-import { compilePattern, type ParamsFromPattern } from "./pattern.js";
+import type {
+  ButtonInteraction,
+  Client,
+  Guild,
+  GuildMember,
+  StringSelectMenuInteraction,
+  User,
+} from 'discord.js';
+import type { Translator } from '../../i18n/translator.js';
+import type { Logger } from '../../logging/logger.js';
+import type { GuardResult } from '../commands/types.js';
+import { compilePattern, type ParamsFromPattern } from './pattern.js';
 
 /** The message component interaction types Circe routes. Modals and context menus are out of scope. */
 export type ComponentInteraction = ButtonInteraction | StringSelectMenuInteraction;
 
-export interface ComponentContext<Interaction extends ComponentInteraction = ComponentInteraction, Params = undefined> {
+export interface ComponentContext<
+  Interaction extends ComponentInteraction = ComponentInteraction,
+  Params = undefined,
+> {
   /** The raw discord.js interaction — never hidden behind a Circe wrapper. */
   readonly interaction: Interaction;
   readonly client: Client;
@@ -27,6 +38,17 @@ export interface ComponentContext<Interaction extends ComponentInteraction = Com
   readonly params: Params;
 }
 
+/**
+ * Method-style so guards stay assignable across differently-parsed
+ * definitions (e.g. the paginator's typed pattern widened to the generic
+ * `Record<string, string>` shape) instead of failing on parameter variance.
+ */
+export type ComponentGuard<Params = undefined> = {
+  bivarianceHack(
+    ctx: ComponentContext<ComponentInteraction, Params>,
+  ): GuardResult | Promise<GuardResult>;
+}['bivarianceHack'];
+
 export interface ComponentDefinition<
   Metadata extends Record<string, unknown> = Record<string, never>,
   Params = undefined,
@@ -37,6 +59,8 @@ export interface ComponentDefinition<
    * (most specific) one wins — registration order never affects resolution.
    */
   readonly prefix: string;
+  /** Run in order after `parse` and before `execute`; the first denial short-circuits. */
+  readonly guards?: readonly ComponentGuard<Params>[];
   /** Same bot-owned metadata bag as `CommandDefinition.metadata` — Circe never reads it. */
   readonly metadata?: Metadata;
   /**
@@ -64,25 +88,32 @@ export interface PatternComponentDefinition<
    * definition time — never seen by the registry or router.
    */
   readonly pattern: Pattern;
+  readonly guards?: readonly ComponentGuard<ParamsFromPattern<Pattern>>[];
   readonly metadata?: Metadata;
-  execute(ctx: ComponentContext<ComponentInteraction, ParamsFromPattern<Pattern>>): void | Promise<void>;
+  execute(
+    ctx: ComponentContext<ComponentInteraction, ParamsFromPattern<Pattern>>,
+  ): void | Promise<void>;
 }
 
 /** Identity helper — exists purely for type inference/ergonomics at the call site. */
-export function defineComponent<Metadata extends Record<string, unknown> = Record<string, never>, Params = undefined>(
-  definition: ComponentDefinition<Metadata, Params>,
-): ComponentDefinition<Metadata, Params>;
+export function defineComponent<
+  Metadata extends Record<string, unknown> = Record<string, never>,
+  Params = undefined,
+>(definition: ComponentDefinition<Metadata, Params>): ComponentDefinition<Metadata, Params>;
 export function defineComponent<
   Pattern extends string,
   Metadata extends Record<string, unknown> = Record<string, never>,
->(definition: PatternComponentDefinition<Pattern, Metadata>): ComponentDefinition<Metadata, ParamsFromPattern<Pattern>>;
+>(
+  definition: PatternComponentDefinition<Pattern, Metadata>,
+): ComponentDefinition<Metadata, ParamsFromPattern<Pattern>>;
 // biome-ignore lint/suspicious/noExplicitAny: implementation signature for the two typed overloads above
 export function defineComponent(definition: any): any {
-  if ("pattern" in definition) {
+  if ('pattern' in definition) {
     const compiled = compilePattern(definition.pattern);
     return {
       prefix: compiled.prefix,
       parse: compiled.parse,
+      ...(definition.guards !== undefined ? { guards: definition.guards } : {}),
       ...(definition.metadata !== undefined ? { metadata: definition.metadata } : {}),
       execute: definition.execute,
     };

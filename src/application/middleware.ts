@@ -1,6 +1,6 @@
-import type { Logger } from "../logging/logger.js";
+import type { Logger } from '../logging/logger.js';
 
-export type MiddlewareKind = "command" | "context-menu" | "component" | "modal";
+export type MiddlewareKind = 'command' | 'context-menu' | 'component' | 'modal';
 
 export interface MiddlewareContext {
   readonly kind: MiddlewareKind;

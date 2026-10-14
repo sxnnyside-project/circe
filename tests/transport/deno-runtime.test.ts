@@ -1,10 +1,13 @@
-import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { $ } from "bun";
+import { describe, expect, test } from 'bun:test';
+import { existsSync } from 'node:fs';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { $ } from 'bun';
 
-const DENO_AVAILABLE = await Bun.which("deno");
+const DENO_AVAILABLE = await Bun.which('deno');
+// `bun run check` builds before testing; a bare `bun test` on a fresh clone has no dist/ to hand to Deno.
+const DIST_BUILT = existsSync(path.join(import.meta.dirname, '..', '..', 'dist'));
 
 /**
  * Verifies the HTTP transport against a *real* Deno process — not just
@@ -14,22 +17,22 @@ const DENO_AVAILABLE = await Bun.which("deno");
  * makes, checked automatically rather than asserted from memory of a one-off
  * manual run.
  */
-describe.skipIf(!DENO_AVAILABLE)("HTTP transport on a real Deno process", () => {
-  test("Deno.serve answers a real signed PING and dispatches a real interaction", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "circe-deno-"));
-    const circeRoot = path.join(import.meta.dirname, "..", "..");
+describe.skipIf(!DENO_AVAILABLE || !DIST_BUILT)('HTTP transport on a real Deno process', () => {
+  test('Deno.serve answers a real signed PING and dispatches a real interaction', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'circe-deno-'));
+    const circeRoot = path.join(import.meta.dirname, '..', '..');
 
     try {
-      await mkdir(path.join(dir, "circe-dist"), { recursive: true });
-      await $`cp -r ${path.join(circeRoot, "dist")}/. ${path.join(dir, "circe-dist")}/`.quiet();
+      await mkdir(path.join(dir, 'circe-dist'), { recursive: true });
+      await $`cp -r ${path.join(circeRoot, 'dist')}/. ${path.join(dir, 'circe-dist')}/`.quiet();
 
       await writeFile(
-        path.join(dir, "deno.json"),
-        JSON.stringify({ imports: { "discord.js": "npm:discord.js@14.27.0" } }),
+        path.join(dir, 'deno.json'),
+        JSON.stringify({ imports: { 'discord.js': 'npm:discord.js@14.27.0' } }),
       );
 
       await writeFile(
-        path.join(dir, "test.mjs"),
+        path.join(dir, 'test.mjs'),
         `
         import { Client } from "discord.js";
         import { createInteractionsHandler, startInteractionsServer } from "./circe-dist/index.js";
@@ -61,8 +64,8 @@ describe.skipIf(!DENO_AVAILABLE)("HTTP transport on a real Deno process", () => 
         `,
       );
 
-      const result = await $`deno run --allow-all ${path.join(dir, "test.mjs")}`.quiet();
-      const lastLine = result.stdout.toString().trim().split("\n").pop() ?? "";
+      const result = await $`deno run --allow-all ${path.join(dir, 'test.mjs')}`.quiet();
+      const lastLine = result.stdout.toString().trim().split('\n').pop() ?? '';
       const parsed = JSON.parse(lastLine);
 
       expect(parsed.status).toBe(200);

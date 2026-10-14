@@ -1,17 +1,23 @@
-import { type ChatInputCommandInteraction, type Client, Events, GuildMember, type Interaction } from "discord.js";
-import type { MiddlewareModule } from "../../application/middleware.js";
-import { runWithMiddleware } from "../../application/middleware.js";
-import { normalizeError } from "../../errors/normalize-error.js";
-import { IdentityI18nResolver } from "../../i18n/identity-resolver.js";
-import { createTranslator } from "../../i18n/translator.js";
-import type { I18nResolver } from "../../i18n/types.js";
-import { getCorrelationId, withCorrelationId } from "../../logging/context.js";
-import type { Logger } from "../../logging/logger.js";
-import { reportError } from "../../observability/report-error.js";
-import type { ErrorReporter } from "../../observability/types.js";
-import { CommandError } from "./errors.js";
-import type { CommandRegistry } from "./registry.js";
-import type { CommandContext } from "./types.js";
+import {
+  type ChatInputCommandInteraction,
+  type Client,
+  Events,
+  GuildMember,
+  type Interaction,
+} from 'discord.js';
+import type { MiddlewareModule } from '../../application/middleware.js';
+import { runWithMiddleware } from '../../application/middleware.js';
+import { normalizeError } from '../../errors/normalize-error.js';
+import { IdentityI18nResolver } from '../../i18n/identity-resolver.js';
+import { createTranslator, i18nContextOf } from '../../i18n/translator.js';
+import type { I18nResolver } from '../../i18n/types.js';
+import { getCorrelationId, withCorrelationId } from '../../logging/context.js';
+import type { Logger } from '../../logging/logger.js';
+import { reportError } from '../../observability/report-error.js';
+import type { ErrorReporter } from '../../observability/types.js';
+import { CommandError } from './errors.js';
+import type { CommandRegistry } from './registry.js';
+import type { CommandContext } from './types.js';
 
 /**
  * Called when an interaction names a command that isn't in the registry.
@@ -35,7 +41,10 @@ export type GuardDeniedHandler = (ctx: CommandContext, reason: string) => void |
  * calling this. The default logs it and replies with a generic ephemeral
  * message; override for custom user-facing error presentation.
  */
-export type CommandErrorHandler = (ctx: CommandContext, error: CommandError) => void | Promise<void>;
+export type CommandErrorHandler = (
+  ctx: CommandContext,
+  error: CommandError,
+) => void | Promise<void>;
 
 export interface CommandRouterOptions {
   registry: CommandRegistry;
@@ -53,18 +62,20 @@ export interface CommandRouterOptions {
 const defaultI18nResolver = new IdentityI18nResolver();
 
 async function defaultOnUnknownCommand(ctx: CommandContext): Promise<void> {
-  ctx.logger.warn("Received interaction for an unregistered command", { command: ctx.interaction.commandName });
-  await safeRespond(ctx.interaction, "This command is not currently available.");
+  ctx.logger.warn('Received interaction for an unregistered command', {
+    command: ctx.interaction.commandName,
+  });
+  await safeRespond(ctx.interaction, 'This command is not currently available.');
 }
 
 async function defaultOnGuardDenied(ctx: CommandContext, reason: string): Promise<void> {
-  ctx.logger.info("Command blocked by guard", { reason });
+  ctx.logger.info('Command blocked by guard', { reason });
   await safeRespond(ctx.interaction, reason);
 }
 
 async function defaultOnCommandError(ctx: CommandContext, error: CommandError): Promise<void> {
   ctx.logger.error(error.message, { error, correlationId: error.correlationId });
-  await safeRespond(ctx.interaction, "Something went wrong while running that command.");
+  await safeRespond(ctx.interaction, 'Something went wrong while running that command.');
 }
 
 /**
@@ -92,7 +103,11 @@ export async function handleCommandInteraction(
       user: interaction.user,
       logger,
       correlationId,
-      t: createTranslator(options.i18n ?? defaultI18nResolver, interaction.locale),
+      t: createTranslator(
+        options.i18n ?? defaultI18nResolver,
+        interaction.locale,
+        i18nContextOf(interaction),
+      ),
     };
 
     const command = options.registry.get(interaction.commandName);
@@ -105,7 +120,7 @@ export async function handleCommandInteraction(
     try {
       await runWithMiddleware(
         options.middleware,
-        () => ({ kind: "command", name: interaction.commandName, logger, correlationId }),
+        () => ({ kind: 'command', name: interaction.commandName, logger, correlationId }),
         async () => {
           for (const guard of command.guards ?? []) {
             const result = await guard(ctx);
@@ -126,12 +141,16 @@ export async function handleCommandInteraction(
           : new CommandError(normalized.message, {
               cause: normalized,
               operational: normalized.operational,
-              metadata: { ...normalized.metadata, reason: "execution-failed", command: interaction.commandName },
+              metadata: {
+                ...normalized.metadata,
+                reason: 'execution-failed',
+                command: interaction.commandName,
+              },
             });
       await reportError(
         options.onError,
         commandError,
-        { kind: "command", name: interaction.commandName, correlationId },
+        { kind: 'command', name: interaction.commandName, correlationId },
         logger,
       );
       await (options.onCommandError ?? defaultOnCommandError)(ctx, commandError);
@@ -139,7 +158,10 @@ export async function handleCommandInteraction(
   });
 }
 
-async function safeRespond(interaction: ChatInputCommandInteraction, content: string): Promise<void> {
+async function safeRespond(
+  interaction: ChatInputCommandInteraction,
+  content: string,
+): Promise<void> {
   try {
     if (interaction.deferred || interaction.replied) {
       await interaction.followUp({ content, ephemeral: true });

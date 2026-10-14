@@ -1,12 +1,12 @@
-import type { ZodError } from "zod";
-import { CirceError, type CirceErrorOptions } from "../errors/circe-error.js";
+import type { ZodError } from 'zod';
+import { CirceError, type CirceErrorOptions } from '../errors/circe-error.js';
 
 export interface ConfigIssue {
   path: string;
   message: string;
 }
 
-export interface ConfigErrorOptions extends Omit<CirceErrorOptions, "metadata"> {
+export interface ConfigErrorOptions extends Omit<CirceErrorOptions, 'metadata'> {
   issues: ConfigIssue[];
 }
 
@@ -32,7 +32,7 @@ export class ConfigError extends CirceError {
 
 export function issuesFromZodError(error: ZodError): ConfigIssue[] {
   return error.issues.map((issue) => ({
-    path: issue.path.length > 0 ? issue.path.join(".") : "(root)",
+    path: issue.path.length > 0 ? issue.path.join('.') : '(root)',
     message: issue.message,
   }));
 }

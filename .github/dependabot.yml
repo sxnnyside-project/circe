@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 2
+    commit-message: { prefix: "chore(deps)" }
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: bun
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 2
+    commit-message: { prefix: "chore(deps)" }
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+      major:
+        update-types: ["major"]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]

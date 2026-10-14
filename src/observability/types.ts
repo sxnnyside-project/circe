@@ -1,6 +1,6 @@
-import type { CirceError } from "../errors/circe-error.js";
+import type { CirceError } from '../errors/circe-error.js';
 
-export type ErrorReportKind = "command" | "component" | "modal" | "context-menu" | "event";
+export type ErrorReportKind = 'command' | 'component' | 'modal' | 'context-menu' | 'event';
 
 export interface ErrorReportContext {
   readonly kind: ErrorReportKind;
@@ -19,4 +19,7 @@ export interface ErrorReportContext {
  * handlers. A throwing reporter is caught and logged — it never breaks the
  * user-facing error handling it runs alongside.
  */
-export type ErrorReporter = (error: CirceError, context: ErrorReportContext) => void | Promise<void>;
+export type ErrorReporter = (
+  error: CirceError,
+  context: ErrorReportContext,
+) => void | Promise<void>;

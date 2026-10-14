@@ -1,49 +1,49 @@
-import { describe, expect, test } from "bun:test";
-import { Lifecycle, LifecycleError } from "../../src/application/lifecycle.js";
+import { describe, expect, test } from 'bun:test';
+import { Lifecycle, LifecycleError } from '../../src/application/lifecycle.js';
 
-describe("Lifecycle", () => {
-  test("starts in the created state", () => {
-    expect(new Lifecycle().state).toBe("created");
+describe('Lifecycle', () => {
+  test('starts in the created state', () => {
+    expect(new Lifecycle().state).toBe('created');
   });
 
-  test("moves from created to running on start()", async () => {
+  test('moves from created to running on start()', async () => {
     const lifecycle = new Lifecycle();
     await lifecycle.start();
-    expect(lifecycle.state).toBe("running");
+    expect(lifecycle.state).toBe('running');
   });
 
-  test("runs start hooks in registration order", async () => {
+  test('runs start hooks in registration order', async () => {
     const lifecycle = new Lifecycle();
     const calls: string[] = [];
     lifecycle.onStart(() => {
-      calls.push("first");
+      calls.push('first');
     });
     lifecycle.onStart(() => {
-      calls.push("second");
+      calls.push('second');
     });
 
     await lifecycle.start();
-    expect(calls).toEqual(["first", "second"]);
+    expect(calls).toEqual(['first', 'second']);
   });
 
-  test("stop() runs stop hooks in reverse registration order", async () => {
+  test('stop() runs stop hooks in reverse registration order', async () => {
     const lifecycle = new Lifecycle();
     const calls: string[] = [];
     lifecycle.onStop(() => {
-      calls.push("first");
+      calls.push('first');
     });
     lifecycle.onStop(() => {
-      calls.push("second");
+      calls.push('second');
     });
 
     await lifecycle.start();
     await lifecycle.stop();
 
-    expect(calls).toEqual(["second", "first"]);
-    expect(lifecycle.state).toBe("stopped");
+    expect(calls).toEqual(['second', 'first']);
+    expect(lifecycle.state).toBe('stopped');
   });
 
-  test("stop() is idempotent — calling it again does not rerun hooks", async () => {
+  test('stop() is idempotent — calling it again does not rerun hooks', async () => {
     const lifecycle = new Lifecycle();
     let stopCount = 0;
     lifecycle.onStop(() => {
@@ -55,26 +55,26 @@ describe("Lifecycle", () => {
     await lifecycle.stop();
 
     expect(stopCount).toBe(1);
-    expect(lifecycle.state).toBe("stopped");
+    expect(lifecycle.state).toBe('stopped');
   });
 
-  test("stop() before start() is a safe no-op", async () => {
+  test('stop() before start() is a safe no-op', async () => {
     const lifecycle = new Lifecycle();
     await expect(lifecycle.stop()).resolves.toBeUndefined();
-    expect(lifecycle.state).toBe("stopped");
+    expect(lifecycle.state).toBe('stopped');
   });
 
-  test("start() rejects and does not transition to running when a start hook throws", async () => {
+  test('start() rejects and does not transition to running when a start hook throws', async () => {
     const lifecycle = new Lifecycle();
     lifecycle.onStart(() => {
-      throw new Error("boom");
+      throw new Error('boom');
     });
 
-    await expect(lifecycle.start()).rejects.toThrow("boom");
-    expect(lifecycle.state).toBe("stopped");
+    await expect(lifecycle.start()).rejects.toThrow('boom');
+    expect(lifecycle.state).toBe('stopped');
   });
 
-  test("start() cannot run twice", async () => {
+  test('start() cannot run twice', async () => {
     const lifecycle = new Lifecycle();
     await lifecycle.start();
     await expect(lifecycle.start()).rejects.toBeInstanceOf(LifecycleError);
@@ -83,28 +83,54 @@ describe("Lifecycle", () => {
   test("start() after a failed start also rejects (state is already 'stopped')", async () => {
     const lifecycle = new Lifecycle();
     lifecycle.onStart(() => {
-      throw new Error("boom");
+      throw new Error('boom');
     });
 
-    await expect(lifecycle.start()).rejects.toThrow("boom");
+    await expect(lifecycle.start()).rejects.toThrow('boom');
     await expect(lifecycle.start()).rejects.toBeInstanceOf(LifecycleError);
   });
 
-  test("stop() still runs every hook even if an earlier one throws, then reports the failure", async () => {
+  test('stop() still runs every hook even if an earlier one throws, then reports the failure', async () => {
     const lifecycle = new Lifecycle();
     const calls: string[] = [];
     lifecycle.onStop(() => {
-      calls.push("first");
-      throw new Error("cleanup failed");
+      calls.push('first');
+      throw new Error('cleanup failed');
     });
     lifecycle.onStop(() => {
-      calls.push("second");
+      calls.push('second');
     });
 
     await lifecycle.start();
     await expect(lifecycle.stop()).rejects.toBeInstanceOf(LifecycleError);
 
-    expect(calls).toEqual(["second", "first"]);
-    expect(lifecycle.state).toBe("stopped");
+    expect(calls).toEqual(['second', 'first']);
+    expect(lifecycle.state).toBe('stopped');
+  });
+
+  test('a failing start hook runs the stop hooks so earlier hooks release what they opened', async () => {
+    const cleanupErrors: string[] = [];
+    const lifecycle = new Lifecycle({
+      onCleanupError: (error) => cleanupErrors.push(error.message),
+    });
+    const events: string[] = [];
+    lifecycle.onStart(() => {
+      events.push('open-db');
+    });
+    lifecycle.onStart(() => {
+      throw new Error('migration failed');
+    });
+    lifecycle.onStop(() => {
+      events.push('close-db');
+    });
+    lifecycle.onStop(() => {
+      throw new Error('close failed');
+    });
+
+    await expect(lifecycle.start()).rejects.toThrow('migration failed');
+
+    expect(events).toEqual(['open-db', 'close-db']);
+    expect(lifecycle.state).toBe('stopped');
+    expect(cleanupErrors).toEqual(['close failed']);
   });
 });

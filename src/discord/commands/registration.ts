@@ -1,13 +1,18 @@
 import {
   ApplicationCommandType,
   ContextMenuCommandBuilder,
+  PermissionsBitField,
   type RESTPostAPIApplicationCommandsJSONBody,
   Routes,
-} from "discord.js";
-import type { Logger } from "../../logging/logger.js";
-import type { MessageCommandDefinition, UserCommandDefinition } from "../context-menus/types.js";
-import { CommandError } from "./errors.js";
-import type { CommandDefinition } from "./types.js";
+} from 'discord.js';
+import type { Logger } from '../../logging/logger.js';
+import type {
+  ContextMenuRegistrationOptions,
+  MessageCommandDefinition,
+  UserCommandDefinition,
+} from '../context-menus/types.js';
+import { CommandError } from './errors.js';
+import type { CommandDefinition } from './types.js';
 
 /**
  * The minimal shape Circe needs from a REST client to register commands.
@@ -31,6 +36,26 @@ export interface RegisterCommandsOptions {
   logger: Logger;
 }
 
+function buildContextMenu(
+  command: ContextMenuRegistrationOptions & { readonly name: string },
+  type: ApplicationCommandType.User | ApplicationCommandType.Message,
+): RESTPostAPIApplicationCommandsJSONBody {
+  const builder = new ContextMenuCommandBuilder().setName(command.name).setType(type);
+  if (command.defaultMemberPermissions !== undefined) {
+    builder.setDefaultMemberPermissions(
+      command.defaultMemberPermissions === null
+        ? null
+        : PermissionsBitField.resolve(command.defaultMemberPermissions),
+    );
+  }
+  if (command.contexts !== undefined) builder.setContexts(...command.contexts);
+  if (command.integrationTypes !== undefined)
+    builder.setIntegrationTypes(...command.integrationTypes);
+  if (command.nameLocalizations !== undefined)
+    builder.setNameLocalizations(command.nameLocalizations);
+  return builder.toJSON();
+}
+
 /**
  * Bulk-replaces the application's registered commands with the current
  * registry contents. No diffing — a full `PUT` is what Discord's own API
@@ -41,14 +66,14 @@ export async function registerCommands(options: RegisterCommandsOptions): Promis
   const body: RESTPostAPIApplicationCommandsJSONBody[] = [
     ...options.commands.map((command) => command.builder.toJSON()),
     ...(options.userContextMenuCommands ?? []).map((command) =>
-      new ContextMenuCommandBuilder().setName(command.name).setType(ApplicationCommandType.User).toJSON(),
+      buildContextMenu(command, ApplicationCommandType.User),
     ),
     ...(options.messageContextMenuCommands ?? []).map((command) =>
-      new ContextMenuCommandBuilder().setName(command.name).setType(ApplicationCommandType.Message).toJSON(),
+      buildContextMenu(command, ApplicationCommandType.Message),
     ),
   ];
 
-  const scope = options.guildId ? "guild" : "global";
+  const scope = options.guildId ? 'guild' : 'global';
   const route = options.guildId
     ? Routes.applicationGuildCommands(options.clientId, options.guildId)
     : Routes.applicationCommands(options.clientId);
@@ -61,9 +86,14 @@ export async function registerCommands(options: RegisterCommandsOptions): Promis
       commands: body.map((command) => command.name),
     });
   } catch (error) {
-    throw new CommandError("Command registration with Discord failed", {
+    throw new CommandError('Command registration with Discord failed', {
       cause: error,
-      metadata: { reason: "registration-failed", scope, guildId: options.guildId, count: body.length },
+      metadata: {
+        reason: 'registration-failed',
+        scope,
+        guildId: options.guildId,
+        count: body.length,
+      },
     });
   }
 }

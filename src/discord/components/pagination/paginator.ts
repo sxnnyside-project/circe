@@ -1,8 +1,15 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, type EmbedBuilder, StringSelectMenuBuilder } from "discord.js";
-import type { ComponentDefinition } from "../types.js";
-import { defineComponent } from "../types.js";
-import { MemoryPaginationStore } from "./memory-store.js";
-import type { PaginationStore, PaginatorPage } from "./types.js";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  type EmbedBuilder,
+  StringSelectMenuBuilder,
+} from 'discord.js';
+import { invokerOnly } from '../../guards/invoker-only.js';
+import type { ComponentDefinition } from '../types.js';
+import { defineComponent } from '../types.js';
+import { MemoryPaginationStore } from './memory-store.js';
+import type { PaginationStore, PaginatorPage } from './types.js';
 
 const MAX_SELECT_OPTIONS = 25;
 
@@ -21,6 +28,13 @@ export interface CreatePaginatorOptions {
    */
   readonly pageSelect?: boolean;
   /**
+   * Restricts the buttons to the user who ran the command that produced the
+   * pager. Off by default: a deliberately shared pager (a public leaderboard
+   * anyone may flip) is a legitimate use. When set, other users' clicks are
+   * answered with the guard's denial reason.
+   */
+  readonly invokerOnly?: boolean;
+  /**
    * Overrides the prev/next button presentation. Circe never hardcodes a
    * presentation choice without an escape hatch — the default (⬅️/➡️
    * emoji, no text label) is a sensible starting point, not a fixed
@@ -33,8 +47,8 @@ export interface CreatePaginatorOptions {
   };
 }
 
-const DEFAULT_PREVIOUS_EMOJI = "⬅️";
-const DEFAULT_NEXT_EMOJI = "➡️";
+const DEFAULT_PREVIOUS_EMOJI = '⬅️';
+const DEFAULT_NEXT_EMOJI = '➡️';
 
 interface ButtonPresentation {
   readonly emoji?: string;
@@ -51,7 +65,10 @@ function resolveButtonPresentation(
   if (override.emoji === undefined && override.label !== undefined) {
     return { label: override.label };
   }
-  return { emoji: override.emoji ?? defaultEmoji, ...(override.label !== undefined ? { label: override.label } : {}) };
+  return {
+    emoji: override.emoji ?? defaultEmoji,
+    ...(override.label !== undefined ? { label: override.label } : {}),
+  };
 }
 
 type PaginatorRow = ActionRowBuilder<ButtonBuilder> | ActionRowBuilder<StringSelectMenuBuilder>;
@@ -61,7 +78,11 @@ interface EditableMessage {
 }
 
 interface ReplyableMessage {
-  reply(options: { content?: string; embeds?: unknown[]; components: PaginatorRow[] }): Promise<unknown>;
+  reply(options: {
+    content?: string;
+    embeds?: unknown[];
+    components: PaginatorRow[];
+  }): Promise<unknown>;
 }
 
 export interface Paginator {
@@ -75,10 +96,13 @@ export interface Paginator {
    * (components disabled in place) via one scheduled edit, not a
    * listener held open for the pager's lifetime.
    */
-  reply(interaction: ReplyableMessage & EditableMessage, pages: readonly PaginatorPage[]): Promise<void>;
+  reply(
+    interaction: ReplyableMessage & EditableMessage,
+    pages: readonly PaginatorPage[],
+  ): Promise<void>;
 }
 
-const DEFAULT_ID = "circe-paginate";
+const DEFAULT_ID = 'circe-paginate';
 const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60_000;
 
 function applyPresentation(button: ButtonBuilder, presentation: ButtonPresentation): ButtonBuilder {
@@ -101,11 +125,15 @@ function buildButtonRow(
 ): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     applyPresentation(
-      new ButtonBuilder().setCustomId(`${prefix}:${sessionId}:prev`).setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`${prefix}:${sessionId}:prev`)
+        .setStyle(ButtonStyle.Secondary),
       previous,
     ).setDisabled(index <= 0),
     applyPresentation(
-      new ButtonBuilder().setCustomId(`${prefix}:${sessionId}:next`).setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`${prefix}:${sessionId}:next`)
+        .setStyle(ButtonStyle.Secondary),
       next,
     ).setDisabled(index >= pageCount - 1),
   );
@@ -144,7 +172,9 @@ function buildComponents(
   previous: ButtonPresentation,
   next: ButtonPresentation,
 ): PaginatorRow[] {
-  const rows: PaginatorRow[] = [buildButtonRow(prefix, sessionId, index, pages.length, previous, next)];
+  const rows: PaginatorRow[] = [
+    buildButtonRow(prefix, sessionId, index, pages.length, previous, next),
+  ];
   if (pageSelect) {
     const selectRow = buildSelectRow(prefix, sessionId, index, pages);
     if (selectRow) {
@@ -188,9 +218,9 @@ function disabledComponents(
       new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId(`${prefix}:expired:select`)
-          .setPlaceholder("This pager has expired.")
+          .setPlaceholder('This pager has expired.')
           .setDisabled(true)
-          .addOptions({ label: "expired", value: "expired" }),
+          .addOptions({ label: 'expired', value: 'expired' }),
       ),
     );
   }
@@ -212,7 +242,11 @@ export function createPaginator(options: CreatePaginatorOptions = {}): Paginator
   const idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
   const store = options.store ?? new MemoryPaginationStore();
   const pageSelect = options.pageSelect ?? false;
-  const previousPresentation = resolveButtonPresentation(options.buttons?.previous, DEFAULT_PREVIOUS_EMOJI);
+  const guards = options.invokerOnly ? [invokerOnly()] : [];
+  const previousPresentation = resolveButtonPresentation(
+    options.buttons?.previous,
+    DEFAULT_PREVIOUS_EMOJI,
+  );
   const nextPresentation = resolveButtonPresentation(options.buttons?.next, DEFAULT_NEXT_EMOJI);
   // One outstanding disable timer per session — every interaction
   // reschedules it, so it must cancel the previous one first. Without
@@ -235,7 +269,14 @@ export function createPaginator(options: CreatePaginatorOptions = {}): Paginator
       disableTimers.delete(sessionId);
       store.delete(sessionId);
       void interaction
-        .editReply({ components: disabledComponents(prefix, pageSelect, previousPresentation, nextPresentation) })
+        .editReply({
+          components: disabledComponents(
+            prefix,
+            pageSelect,
+            previousPresentation,
+            nextPresentation,
+          ),
+        })
         .catch(() => {
           // The message may already be gone, or the interaction token may have expired — nothing more to do.
         });
@@ -246,24 +287,30 @@ export function createPaginator(options: CreatePaginatorOptions = {}): Paginator
 
   const component = defineComponent({
     pattern: `${prefix}:[sessionId]:[direction]`,
+    guards,
     async execute(ctx) {
       const { sessionId, direction } = ctx.params;
       const session = store.get(sessionId);
 
       if (!session) {
         await ctx.interaction.update({
-          components: disabledComponents(prefix, pageSelect, previousPresentation, nextPresentation),
+          components: disabledComponents(
+            prefix,
+            pageSelect,
+            previousPresentation,
+            nextPresentation,
+          ),
         });
         return;
       }
 
       let nextIndex: number;
-      if (direction === "select" && ctx.interaction.isStringSelectMenu()) {
-        const requested = Number.parseInt(ctx.interaction.values[0] ?? "0", 10);
+      if (direction === 'select' && ctx.interaction.isStringSelectMenu()) {
+        const requested = Number.parseInt(ctx.interaction.values[0] ?? '0', 10);
         nextIndex = Number.isNaN(requested)
           ? session.index
           : Math.min(Math.max(requested, 0), session.pages.length - 1);
-      } else if (direction === "next") {
+      } else if (direction === 'next') {
         nextIndex = Math.min(session.index + 1, session.pages.length - 1);
       } else {
         nextIndex = Math.max(session.index - 1, 0);
@@ -294,6 +341,9 @@ export function createPaginator(options: CreatePaginatorOptions = {}): Paginator
   return {
     component,
     async reply(interaction, pages) {
+      if (pages.length === 0) {
+        throw new RangeError('createPaginator().reply() requires at least one page');
+      }
       const sessionId = crypto.randomUUID();
       store.set(sessionId, { pages, index: 0 }, idleTimeoutMs);
 
@@ -301,7 +351,15 @@ export function createPaginator(options: CreatePaginatorOptions = {}): Paginator
       await interaction.reply(
         pagePayload(
           page,
-          buildComponents(prefix, sessionId, 0, pages, pageSelect, previousPresentation, nextPresentation),
+          buildComponents(
+            prefix,
+            sessionId,
+            0,
+            pages,
+            pageSelect,
+            previousPresentation,
+            nextPresentation,
+          ),
         ),
       );
 

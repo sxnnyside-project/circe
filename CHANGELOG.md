@@ -9,6 +9,38 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-10-14
+
+### Added
+
+- Context menu commands accept `defaultMemberPermissions`, `contexts`, `integrationTypes` and `nameLocalizations`, applied at registration.
+- `guards` on components and modals, with `onComponentGuardDenied` / `onModalGuardDenied` hooks (also accepted by `error.ts`).
+- `invokerOnly()` guard for components, and `invokerOnly` option on `createPaginator` to restrict paging to the user who ran the command.
+- `onReady(hook)` on integrations and on the app: runs with the logged-in `Client` once the gateway is ready.
+- `I18nResolver.resolve` receives an `I18nContext` (`guildId`, `guildLocale`, `userId`) as a fourth argument.
+- `ctx.t` on autocomplete contexts.
+- `client` option (config file and `createCirce`): `partials`, `presence`, `allowedMentions`, cache/sweeper policy and any other discord.js `ClientOptions` except `intents`.
+- `health` option: `/health` (liveness) and `/ready` (readiness with named checks) served before login, optionally bound to a `host`.
+- `app.every()` / `ctx.every()`: non-overlapping interval tasks started on ready and cleared on shutdown. Registered after ready, they start immediately; non-positive intervals are rejected.
+
+### Changed
+
+- `guildOnly()`, `hasPermission()` and `cooldown()` are typed over the context slice they read, so the same guard works on commands, context menus, components and modals. Assignable wherever a `Guard` was accepted; code that relied on their exact return type should re-check.
+- `circe <command> --help` and `--version` print help/version instead of running the command.
+- `bun run check` builds before running tests, so the cross-runtime Deno test always has a `dist/` to use.
+
+### Fixed
+
+- A rejected second `start()` no longer tears down the already-running application.
+- Command registration honours `client.rest` options (custom `api` base, timeouts), like the gateway client does.
+- A failed `start()` no longer leaves the process half-alive: stop hooks run for whatever started, the gateway client is destroyed and the health server is closed. Stop hooks must therefore tolerate a partially started application.
+- The HTTP interactions endpoint rejects request bodies over 1 MB with `413` before reading them into memory, and rejects signed requests whose timestamp is more than 5 minutes from now (`401`, logged with the measured skew).
+- `circe start` in `http`/`hybrid` mode stops its HTTP server on shutdown instead of keeping the process alive until killed.
+- `circe start` logs structured JSON at info level when `NODE_ENV=production`.
+- `BunSqliteCooldownStore` periodically deletes expired rows instead of keeping never-rechecked keys forever.
+- `createPaginator().reply()` throws a clear error for an empty page list.
+- `/ready` reuses its check results for one second.
+
 ## [1.0.0] — 2026-09-09
 
 ### Added

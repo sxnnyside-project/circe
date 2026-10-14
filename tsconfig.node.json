@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "allowImportingTsExtensions": false,
+    "rootDir": "./src",
+    "outDir": "./dist-node",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/bun-sqlite.ts", "src/discord/guards/cooldown/bun-sqlite-store.ts"]
+}

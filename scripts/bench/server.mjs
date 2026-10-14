@@ -13,13 +13,13 @@
 // Only `PING` requests are exercised (see run.mjs) so a real discord.js
 // `Client` is never needed — the object below only has to satisfy the
 // shape `createInteractionsHandler` reads, and PING responses never touch it.
-import { createInteractionsHandler, startInteractionsServer } from "../../dist/index.js";
+import { createInteractionsHandler, startInteractionsServer } from '../../dist/index.js';
 
 const port = Number(process.env.BENCH_PORT ?? 0);
-const publicKey = process.env.BENCH_PUBLIC_KEY ?? "";
+const publicKey = process.env.BENCH_PUBLIC_KEY ?? '';
 
 if (!port || !publicKey) {
-  throw new Error("BENCH_PORT and BENCH_PUBLIC_KEY must be set");
+  throw new Error('BENCH_PORT and BENCH_PUBLIC_KEY must be set');
 }
 
 const silentLogger = {
@@ -37,4 +37,4 @@ const handler = createInteractionsHandler({
 
 startInteractionsServer({ port, fetch: handler, logger: silentLogger });
 
-process.stdout.write("ready\n");
+process.stdout.write('ready\n');

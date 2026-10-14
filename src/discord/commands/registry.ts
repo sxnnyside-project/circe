@@ -1,5 +1,5 @@
-import { DiscoveryConflictError } from "../../errors/discovery-conflict-error.js";
-import type { CommandDefinition } from "./types.js";
+import { DiscoveryConflictError } from '../../errors/discovery-conflict-error.js';
+import type { CommandDefinition } from './types.js';
 
 /**
  * Holds the commands a Circe application knows about. Owned by the
@@ -13,16 +13,16 @@ export class CommandRegistry {
     const name = command.builder.name;
 
     if (!name) {
-      throw new DiscoveryConflictError("Command builder is missing a name", {
-        category: "commands",
-        reason: "missing-identity",
+      throw new DiscoveryConflictError('Command builder is missing a name', {
+        category: 'commands',
+        reason: 'missing-identity',
       });
     }
 
     if (this.#commands.has(name)) {
       throw new DiscoveryConflictError(`Duplicate command name "${name}"`, {
-        category: "commands",
-        reason: "duplicate",
+        category: 'commands',
+        reason: 'duplicate',
         identity: name,
       });
     }

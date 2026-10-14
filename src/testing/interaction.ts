@@ -6,7 +6,7 @@ import type {
   GuildMember,
   ModalSubmitInteraction,
   User,
-} from "discord.js";
+} from 'discord.js';
 
 export interface TestReply {
   content: string;
@@ -52,18 +52,20 @@ export function createTestInteraction(options: TestInteractionOptions = {}): Tes
   const followUps: TestReply[] = [];
 
   const interaction = {
-    commandName: options.commandName ?? "test",
+    commandName: options.commandName ?? 'test',
     deferred: false,
     replied: false,
-    guild: options.guild === undefined ? ({ id: "test-guild" } as Guild) : options.guild,
+    guild: options.guild === undefined ? ({ id: 'test-guild' } as Guild) : options.guild,
     member: options.member ?? null,
-    user: options.user ?? ({ id: "test-user", username: "test-user" } as User),
+    user: options.user ?? ({ id: 'test-user', username: 'test-user' } as User),
     client: options.client ?? ({} as Client),
-    locale: options.locale ?? "en-US",
+    locale: options.locale ?? 'en-US',
     options: {
       getSubcommand: (required?: boolean) => {
         if (options.subcommand === undefined && required !== false) {
-          throw new Error("No test subcommand provided — pass `subcommand` to createTestInteraction/testCommand");
+          throw new Error(
+            'No test subcommand provided — pass `subcommand` to createTestInteraction/testCommand',
+          );
         }
         return options.subcommand ?? null;
       },
@@ -110,20 +112,22 @@ export interface TestModalInteraction {
  * `deferred`/`replied`, `guild`, `member`, `user`, `client`, and
  * `reply()`/`followUp()` — the same scope discipline as `createTestInteraction`.
  */
-export function createTestModalInteraction(options: TestModalInteractionOptions = {}): TestModalInteraction {
+export function createTestModalInteraction(
+  options: TestModalInteractionOptions = {},
+): TestModalInteraction {
   const replies: TestReply[] = [];
   const followUps: TestReply[] = [];
   const fields = options.fields ?? {};
 
   const interaction = {
-    customId: options.customId ?? "test:",
+    customId: options.customId ?? 'test:',
     deferred: false,
     replied: false,
-    guild: options.guild === undefined ? ({ id: "test-guild" } as Guild) : options.guild,
+    guild: options.guild === undefined ? ({ id: 'test-guild' } as Guild) : options.guild,
     member: options.member ?? null,
-    user: options.user ?? ({ id: "test-user", username: "test-user" } as User),
+    user: options.user ?? ({ id: 'test-user', username: 'test-user' } as User),
     client: options.client ?? ({} as Client),
-    locale: options.locale ?? "en-US",
+    locale: options.locale ?? 'en-US',
     fields: {
       getTextInputValue: (customId: string) => {
         const value = fields[customId];
@@ -156,6 +160,8 @@ export interface TestComponentInteractionOptions {
   client?: Client;
   /** Defaults to `"en-US"` — the interaction's locale, read by `ctx.t(...)`. */
   locale?: string;
+  /** The message the component sits on — set `interactionMetadata.user` to exercise `invokerOnly()`. */
+  message?: { interactionMetadata?: { user: { id: string } } | null };
 }
 
 export interface TestComponentInteraction {
@@ -185,14 +191,15 @@ export function createTestComponentInteraction(
   const updates: TestReply[] = [];
 
   const interaction = {
-    customId: options.customId ?? "test:",
+    customId: options.customId ?? 'test:',
     deferred: false,
     replied: false,
-    guild: options.guild === undefined ? ({ id: "test-guild" } as Guild) : options.guild,
+    guild: options.guild === undefined ? ({ id: 'test-guild' } as Guild) : options.guild,
     member: options.member ?? null,
-    user: options.user ?? ({ id: "test-user", username: "test-user" } as User),
+    user: options.user ?? ({ id: 'test-user', username: 'test-user' } as User),
     client: options.client ?? ({} as Client),
-    locale: options.locale ?? "en-US",
+    locale: options.locale ?? 'en-US',
+    message: options.message ?? null,
     reply: async (payload: TestReply) => {
       interaction.replied = true;
       replies.push(payload);

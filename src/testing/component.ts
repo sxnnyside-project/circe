@@ -1,9 +1,13 @@
-import { ComponentRegistry } from "../discord/components/registry.js";
-import { handleComponentInteraction } from "../discord/components/router.js";
-import type { ComponentDefinition } from "../discord/components/types.js";
-import type { LogEntry } from "../logging/logger.js";
-import { createTestComponentInteraction, type TestComponentInteractionOptions, type TestReply } from "./interaction.js";
-import { createTestLogger } from "./logger.js";
+import { ComponentRegistry } from '../discord/components/registry.js';
+import { handleComponentInteraction } from '../discord/components/router.js';
+import type { ComponentDefinition } from '../discord/components/types.js';
+import type { LogEntry } from '../logging/logger.js';
+import {
+  createTestComponentInteraction,
+  type TestComponentInteractionOptions,
+  type TestReply,
+} from './interaction.js';
+import { createTestLogger } from './logger.js';
 
 export interface TestComponentResult {
   replies: TestReply[];

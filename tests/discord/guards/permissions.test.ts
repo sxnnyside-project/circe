@@ -1,12 +1,12 @@
-import { describe, expect, test } from "bun:test";
-import { PermissionFlagsBits } from "discord.js";
-import type { CommandContext } from "../../../src/discord/commands/types.js";
-import { guildOnly } from "../../../src/discord/guards/guild-only.js";
-import { hasPermission } from "../../../src/discord/guards/permissions.js";
+import { describe, expect, test } from 'bun:test';
+import { PermissionFlagsBits } from 'discord.js';
+import type { CommandContext } from '../../../src/discord/commands/types.js';
+import { guildOnly } from '../../../src/discord/guards/guild-only.js';
+import { hasPermission } from '../../../src/discord/guards/permissions.js';
 
 function makeCtx(permissions: bigint[], overrides: Partial<CommandContext> = {}): CommandContext {
   return {
-    guild: { id: "guild-1" } as never,
+    guild: { id: 'guild-1' } as never,
     member: {
       permissions: {
         has: (permission: bigint) => permissions.includes(permission),
@@ -22,33 +22,33 @@ function makeCtx(permissions: bigint[], overrides: Partial<CommandContext> = {})
   };
 }
 
-describe("hasPermission", () => {
-  test("passes when the member has the required permission", async () => {
+describe('hasPermission', () => {
+  test('passes when the member has the required permission', async () => {
     const guard = hasPermission(PermissionFlagsBits.BanMembers);
     const result = await guard(makeCtx([PermissionFlagsBits.BanMembers]));
     expect(result).toBe(true);
   });
 
-  test("denies when the member lacks the required permission", async () => {
+  test('denies when the member lacks the required permission', async () => {
     const guard = hasPermission(PermissionFlagsBits.BanMembers);
     const result = await guard(makeCtx([]));
     expect(result).not.toBe(true);
-    expect(typeof result).toBe("string");
+    expect(typeof result).toBe('string');
   });
 
-  test("requires every listed permission, not just one", async () => {
+  test('requires every listed permission, not just one', async () => {
     const guard = hasPermission(PermissionFlagsBits.BanMembers, PermissionFlagsBits.KickMembers);
     const result = await guard(makeCtx([PermissionFlagsBits.BanMembers]));
     expect(result).not.toBe(true);
   });
 
-  test("denies outside a guild (no resolvable member)", async () => {
+  test('denies outside a guild (no resolvable member)', async () => {
     const guard = hasPermission(PermissionFlagsBits.BanMembers);
     const result = await guard(makeCtx([], { member: null }));
     expect(result).not.toBe(true);
   });
 
-  test("guards compose: guildOnly and hasPermission both must pass", async () => {
+  test('guards compose: guildOnly and hasPermission both must pass', async () => {
     const guards = [guildOnly(), hasPermission(PermissionFlagsBits.BanMembers)];
     const ctx = makeCtx([PermissionFlagsBits.BanMembers]);
 
@@ -57,7 +57,7 @@ describe("hasPermission", () => {
     }
   });
 
-  test("guards compose: the first failing guard in the list determines the denial", async () => {
+  test('guards compose: the first failing guard in the list determines the denial', async () => {
     const guards = [guildOnly(), hasPermission(PermissionFlagsBits.BanMembers)];
     const ctx = makeCtx([PermissionFlagsBits.BanMembers], { guild: null });
 

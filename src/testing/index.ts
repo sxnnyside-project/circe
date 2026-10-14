@@ -8,14 +8,14 @@
  * already public and don't need a test-only wrapper.
  */
 
-export type { TestCommandResult } from "./command.js";
-export { testCommand } from "./command.js";
-export type { TestComponentResult } from "./component.js";
-export { testComponent } from "./component.js";
-export type { TestContextOptions } from "./context.js";
-export { createTestContext } from "./context.js";
-export type { TestEventResult } from "./event.js";
-export { testEvent } from "./event.js";
+export type { TestCommandResult } from './command.js';
+export { testCommand } from './command.js';
+export type { TestComponentResult } from './component.js';
+export { testComponent } from './component.js';
+export type { TestContextOptions } from './context.js';
+export { createTestContext } from './context.js';
+export type { TestEventResult } from './event.js';
+export { testEvent } from './event.js';
 export type {
   TestComponentInteraction,
   TestComponentInteractionOptions,
@@ -24,9 +24,13 @@ export type {
   TestModalInteraction,
   TestModalInteractionOptions,
   TestReply,
-} from "./interaction.js";
-export { createTestComponentInteraction, createTestInteraction, createTestModalInteraction } from "./interaction.js";
-export type { TestLogger } from "./logger.js";
-export { createTestLogger } from "./logger.js";
-export type { TestModalResult } from "./modal.js";
-export { testModal } from "./modal.js";
+} from './interaction.js';
+export {
+  createTestComponentInteraction,
+  createTestInteraction,
+  createTestModalInteraction,
+} from './interaction.js';
+export type { TestLogger } from './logger.js';
+export { createTestLogger } from './logger.js';
+export type { TestModalResult } from './modal.js';
+export { testModal } from './modal.js';

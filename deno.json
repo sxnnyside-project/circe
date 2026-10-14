@@ -1,0 +1,11 @@
+{
+  "nodeModulesDir": "auto",
+  "lock": false,
+  "tasks": {
+    "typecheck": "deno run -A npm:typescript/tsc --noEmit",
+    "lint": "deno run -A npm:@biomejs/biome lint .",
+    "format:check": "deno run -A npm:@biomejs/biome format .",
+    "build": "deno run -A npm:typescript/tsc -p tsconfig.node.json",
+    "smoke": "CIRCE_DIST=dist-node deno run -A scripts/smoke.mjs && CIRCE_DIST=dist-node deno run -A dist-node/cli/index.js --version"
+  }
+}

@@ -1,9 +1,13 @@
-import { ModalRegistry } from "../discord/modals/registry.js";
-import { handleModalInteraction } from "../discord/modals/router.js";
-import type { ModalDefinition } from "../discord/modals/types.js";
-import type { LogEntry } from "../logging/logger.js";
-import { createTestModalInteraction, type TestModalInteractionOptions, type TestReply } from "./interaction.js";
-import { createTestLogger } from "./logger.js";
+import { ModalRegistry } from '../discord/modals/registry.js';
+import { handleModalInteraction } from '../discord/modals/router.js';
+import type { ModalDefinition } from '../discord/modals/types.js';
+import type { LogEntry } from '../logging/logger.js';
+import {
+  createTestModalInteraction,
+  type TestModalInteractionOptions,
+  type TestReply,
+} from './interaction.js';
+import { createTestLogger } from './logger.js';
 
 export interface TestModalResult {
   replies: TestReply[];

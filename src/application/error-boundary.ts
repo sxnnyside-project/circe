@@ -1,11 +1,23 @@
-import type { CommandErrorHandler, GuardDeniedHandler, UnknownCommandHandler } from "../discord/commands/router.js";
-import type { ComponentErrorHandler, UnknownComponentHandler } from "../discord/components/router.js";
+import type {
+  CommandErrorHandler,
+  GuardDeniedHandler,
+  UnknownCommandHandler,
+} from '../discord/commands/router.js';
+import type {
+  ComponentErrorHandler,
+  ComponentGuardDeniedHandler,
+  UnknownComponentHandler,
+} from '../discord/components/router.js';
 import type {
   ContextMenuCommandErrorHandler,
   ContextMenuGuardDeniedHandler,
   UnknownContextMenuCommandHandler,
-} from "../discord/context-menus/router.js";
-import type { ModalErrorHandler, UnknownModalHandler } from "../discord/modals/router.js";
+} from '../discord/context-menus/router.js';
+import type {
+  ModalErrorHandler,
+  ModalGuardDeniedHandler,
+  UnknownModalHandler,
+} from '../discord/modals/router.js';
 
 /**
  * A bot's `error.ts` — the same reply-shaping hooks `createCirce()` already
@@ -19,8 +31,10 @@ export interface ErrorBoundaryModule {
   onCommandError?: CommandErrorHandler;
   onUnknownComponent?: UnknownComponentHandler;
   onComponentError?: ComponentErrorHandler;
+  onComponentGuardDenied?: ComponentGuardDeniedHandler;
   onUnknownModal?: UnknownModalHandler;
   onModalError?: ModalErrorHandler;
+  onModalGuardDenied?: ModalGuardDeniedHandler;
   onUnknownContextMenuCommand?: UnknownContextMenuCommandHandler;
   onContextMenuGuardDenied?: ContextMenuGuardDeniedHandler;
   onContextMenuCommandError?: ContextMenuCommandErrorHandler;

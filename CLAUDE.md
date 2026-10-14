@@ -10,7 +10,7 @@ Circe is a TypeScript/Bun-first Discord bot framework built on `discord.js`, for
 
 ## Stack
 
-TypeScript, Bun (primary runtime + package manager, with first-class Node 22+ and Deno 2+ support — see `docs/architecture/runtime-strategy.md`), `discord.js` (peer dependency — never bundled, see below), Zod (config schema validation), Biome (lint + format), Husky + lint-staged (pre-commit), `bun:test` (test runner — Bun-native, not Vitest; see rationale below).
+TypeScript, Bun (primary runtime + package manager, with first-class Node 22+ and Deno 2+ support — see `docs/architecture/runtime-strategy.md`), `discord.js` (peer dependency — never bundled, see below), Zod (config schema validation), Biome (lint + format), Husky + commitlint (git hooks), `bun:test` (test runner — Bun-native, not Vitest; see rationale below).
 
 ## Two ways to run a bot
 
@@ -19,18 +19,22 @@ TypeScript, Bun (primary runtime + package manager, with first-class Node 22+ an
 
 ## Command surface
 
-Every command is available two ways — `just <recipe>` if `just` is installed, or `bun run <script>` directly. They call the same thing.
+`just` is the command interface; its recipes wrap the `package.json` scripts.
 
 ```
 install         bun install
 dev             bun run --watch src/index.ts   (Circe's own dev loop, not a bot's)
 build           bun build (4 entry points) + tsc --emitDeclarationOnly
 test            bun test
-test:coverage   bun test --coverage, filtered to src/ and gated at 85% lines / 75% functions
 typecheck       tsc --noEmit
 lint            biome lint .
 format          biome format --write .
-check           biome check . && typecheck && test:coverage && build   — the full gate, same as CI
+bench           cross-runtime transport benchmark (not part of check)
+build-node      build into dist-node/ with npm + tsc only (no Bun), then load it on Node
+build-deno      build into dist-node/ with deno tasks only (no Bun or npm), then load it on Deno
+smoke           load the built package and run its CLI on node, deno and bun (needs all three; CI runs it after check)
+changelog       git-cliff release notes for the latest tag
+check           format:check, lint, typecheck, build, then test:coverage (gated at 85% lines / 75% functions) — the full gate, same as CI and the pre-commit hook
 clean           rm -rf dist
 ```
 
@@ -70,6 +74,20 @@ src/
 ```
 
 `tests/` mirrors `src/` exactly, one test file per source file plus a few integration-style files (`application/app.test.ts` exercises the full `createCirce()` wiring with `autoLogin`/`handleProcessSignals` disabled and an injected REST stub — no live Discord connection, ever; `tests/transport/deno-runtime.test.ts` spawns a real `deno` subprocess, skipped automatically when Deno isn't installed).
+
+## Where things go
+
+| What | Where |
+|---|---|
+| A new framework capability (router, registry, loader) | `src/discord/<category>/` next to its siblings, exported through `src/index.ts` |
+| Lifecycle, `createCirce()` wiring, middleware | `src/application/` |
+| A `circe` CLI command or its output contract | `src/cli/` (`interface.ts` holds help, version and completions) |
+| Config schema or `circe.config.ts` contract | `src/config/` |
+| Test helpers shipped to consumers | `src/testing/`, exported through `src/testing/index.ts` |
+| A test | `tests/` mirroring the `src/` path, one file per source file |
+| Architecture and contract docs | `docs/architecture/`; deployment guides in `docs/deployment/`; benchmark results in `docs/benchmarks.md` |
+| Build, coverage and benchmark scripts | `scripts/` |
+| CI, release and Dependabot configuration | `.github/` |
 
 ## Conventions and rules
 

@@ -8,15 +8,18 @@ import type {
   SlashCommandOptionsOnlyBuilder,
   SlashCommandSubcommandsOnlyBuilder,
   User,
-} from "discord.js";
-import type { Translator } from "../../i18n/translator.js";
-import type { Logger } from "../../logging/logger.js";
+} from 'discord.js';
+import type { Translator } from '../../i18n/translator.js';
+import type { Logger } from '../../logging/logger.js';
 
 /**
  * The subset of discord.js's slash command builders a command can use.
  * All three still expose `.name` and `.toJSON()`, which is all Circe needs.
  */
-export type CommandBuilder = SlashCommandBuilder | SlashCommandOptionsOnlyBuilder | SlashCommandSubcommandsOnlyBuilder;
+export type CommandBuilder =
+  | SlashCommandBuilder
+  | SlashCommandOptionsOnlyBuilder
+  | SlashCommandSubcommandsOnlyBuilder;
 
 /** `true` to allow execution; a string denial reason to block it. */
 export type GuardResult = true | string;
@@ -54,6 +57,8 @@ export interface AutocompleteContext {
   readonly guild: Guild | null;
   readonly logger: Logger;
   readonly correlationId: string | undefined;
+  /** Translates `key` for `interaction.locale` — for localizing choice names. Returns `key` verbatim when no resolver is configured. */
+  readonly t: Translator;
 }
 
 /**
@@ -63,7 +68,9 @@ export interface AutocompleteContext {
  */
 export type AutocompleteHandler = (ctx: AutocompleteContext) => void | Promise<void>;
 
-export interface CommandDefinition<Metadata extends Record<string, unknown> = Record<string, never>> {
+export interface CommandDefinition<
+  Metadata extends Record<string, unknown> = Record<string, never>,
+> {
   readonly builder: CommandBuilder;
   readonly guards?: readonly Guard[];
   /** Optional — most commands don't need autocomplete. Absent entirely if the command has no autocompletable options. */

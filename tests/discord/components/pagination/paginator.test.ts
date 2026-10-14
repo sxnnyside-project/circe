@@ -1,6 +1,7 @@
-import { describe, expect, test } from "bun:test";
-import { MemoryPaginationStore } from "../../../../src/discord/components/pagination/memory-store.js";
-import { createPaginator } from "../../../../src/discord/components/pagination/paginator.js";
+import { describe, expect, test } from 'bun:test';
+import { MemoryPaginationStore } from '../../../../src/discord/components/pagination/memory-store.js';
+import { createPaginator } from '../../../../src/discord/components/pagination/paginator.js';
+import { testComponent } from '../../../../src/testing/index.js';
 
 function fakeReplyableInteraction() {
   const replies: unknown[] = [];
@@ -18,12 +19,16 @@ function fakeReplyableInteraction() {
 }
 
 function extractCustomIds(payload: unknown): string[] {
-  const components = (payload as { components: { components: { data: { custom_id: string } }[] }[] }).components;
+  const components = (
+    payload as { components: { components: { data: { custom_id: string } }[] }[] }
+  ).components;
   return components.flatMap((row) => row.components.map((button) => button.data.custom_id));
 }
 
 function isDisabled(payload: unknown, index: number): boolean {
-  const components = (payload as { components: { components: { data: { disabled?: boolean } }[] }[] }).components;
+  const components = (
+    payload as { components: { components: { data: { disabled?: boolean } }[] }[] }
+  ).components;
   return Boolean(components[0]?.components[index]?.data.disabled);
 }
 
@@ -31,8 +36,8 @@ async function clickButton(paginator: ReturnType<typeof createPaginator>, custom
   const updates: unknown[] = [];
   const ctx = {
     params: {
-      sessionId: customId.split(":")[1] as string,
-      direction: customId.split(":")[2] as string,
+      sessionId: customId.split(':')[1] as string,
+      direction: customId.split(':')[2] as string,
     },
     interaction: {
       isStringSelectMenu: () => false,
@@ -48,12 +53,16 @@ async function clickButton(paginator: ReturnType<typeof createPaginator>, custom
   return updates;
 }
 
-async function selectPage(paginator: ReturnType<typeof createPaginator>, customId: string, value: string) {
+async function selectPage(
+  paginator: ReturnType<typeof createPaginator>,
+  customId: string,
+  value: string,
+) {
   const updates: unknown[] = [];
   const ctx = {
     params: {
-      sessionId: customId.split(":")[1] as string,
-      direction: customId.split(":")[2] as string,
+      sessionId: customId.split(':')[1] as string,
+      direction: customId.split(':')[2] as string,
     },
     interaction: {
       isStringSelectMenu: () => true,
@@ -71,7 +80,9 @@ async function selectPage(paginator: ReturnType<typeof createPaginator>, customI
 }
 
 function extractSelectCustomId(payload: unknown): string | undefined {
-  const components = (payload as { components: { components: { data: { custom_id: string } }[] }[] }).components;
+  const components = (
+    payload as { components: { components: { data: { custom_id: string } }[] }[] }
+  ).components;
   return components[1]?.components[0]?.data.custom_id;
 }
 
@@ -82,60 +93,66 @@ interface SelectOption {
 }
 
 function selectOptions(payload: unknown): SelectOption[] {
-  const row = (payload as { components: { components: { toJSON(): { options: SelectOption[] } }[] }[] }).components[1];
+  const row = (
+    payload as { components: { components: { toJSON(): { options: SelectOption[] } }[] }[] }
+  ).components[1];
   return row?.components[0]?.toJSON().options ?? [];
 }
 
-describe("createPaginator", () => {
-  test("replies with the first page, prev disabled, next enabled", async () => {
+describe('createPaginator', () => {
+  test('replies with the first page, prev disabled, next enabled', async () => {
     const paginator = createPaginator();
     const interaction = fakeReplyableInteraction();
 
-    await paginator.reply(interaction, [{ content: "page 1" }, { content: "page 2" }]);
+    await paginator.reply(interaction, [{ content: 'page 1' }, { content: 'page 2' }]);
 
     expect(interaction.replies).toHaveLength(1);
     const payload = interaction.replies[0];
-    expect((payload as { content: string }).content).toBe("page 1");
+    expect((payload as { content: string }).content).toBe('page 1');
     expect(isDisabled(payload, 0)).toBe(true);
     expect(isDisabled(payload, 1)).toBe(false);
   });
 
-  test("clicking next advances to the next page and re-enables prev", async () => {
+  test('clicking next advances to the next page and re-enables prev', async () => {
     const paginator = createPaginator();
     const interaction = fakeReplyableInteraction();
-    await paginator.reply(interaction, [{ content: "page 1" }, { content: "page 2" }, { content: "page 3" }]);
+    await paginator.reply(interaction, [
+      { content: 'page 1' },
+      { content: 'page 2' },
+      { content: 'page 3' },
+    ]);
 
     const [nextCustomId] = extractCustomIds(interaction.replies[0]).slice(1);
     const updates = await clickButton(paginator, nextCustomId as string);
 
-    expect((updates[0] as { content: string }).content).toBe("page 2");
+    expect((updates[0] as { content: string }).content).toBe('page 2');
     expect(isDisabled(updates[0], 0)).toBe(false);
     expect(isDisabled(updates[0], 1)).toBe(false);
   });
 
-  test("next is disabled again on the last page, and clicking next there is a no-op bound at the last page", async () => {
+  test('next is disabled again on the last page, and clicking next there is a no-op bound at the last page', async () => {
     const paginator = createPaginator();
     const interaction = fakeReplyableInteraction();
-    await paginator.reply(interaction, [{ content: "page 1" }, { content: "page 2" }]);
+    await paginator.reply(interaction, [{ content: 'page 1' }, { content: 'page 2' }]);
 
     const [nextId] = extractCustomIds(interaction.replies[0]).slice(1);
     const firstClick = await clickButton(paginator, nextId as string);
-    expect((firstClick[0] as { content: string }).content).toBe("page 2");
+    expect((firstClick[0] as { content: string }).content).toBe('page 2');
     expect(isDisabled(firstClick[0], 1)).toBe(true);
 
     // Clicking "next" again from the last page (button should be disabled client-side, but verify server-side bound too).
     const secondClick = await clickButton(paginator, nextId as string);
-    expect((secondClick[0] as { content: string }).content).toBe("page 2");
+    expect((secondClick[0] as { content: string }).content).toBe('page 2');
   });
 
-  test("clicking prev from page 0 stays bound at page 0", async () => {
+  test('clicking prev from page 0 stays bound at page 0', async () => {
     const paginator = createPaginator();
     const interaction = fakeReplyableInteraction();
-    await paginator.reply(interaction, [{ content: "only" }, { content: "second" }]);
+    await paginator.reply(interaction, [{ content: 'only' }, { content: 'second' }]);
 
     const [prevId] = extractCustomIds(interaction.replies[0]);
     const click = await clickButton(paginator, prevId as string);
-    expect((click[0] as { content: string }).content).toBe("only");
+    expect((click[0] as { content: string }).content).toBe('only');
   });
 
   test("independent sessions from the same paginator don't share state", async () => {
@@ -143,24 +160,24 @@ describe("createPaginator", () => {
     const a = fakeReplyableInteraction();
     const b = fakeReplyableInteraction();
 
-    await paginator.reply(a, [{ content: "a1" }, { content: "a2" }]);
-    await paginator.reply(b, [{ content: "b1" }, { content: "b2" }]);
+    await paginator.reply(a, [{ content: 'a1' }, { content: 'a2' }]);
+    await paginator.reply(b, [{ content: 'b1' }, { content: 'b2' }]);
 
     const [aNext] = extractCustomIds(a.replies[0]).slice(1);
     const clickA = await clickButton(paginator, aNext as string);
-    expect((clickA[0] as { content: string }).content).toBe("a2");
+    expect((clickA[0] as { content: string }).content).toBe('a2');
 
     // b's session is untouched by a's click.
-    expect((b.replies[0] as { content: string }).content).toBe("b1");
+    expect((b.replies[0] as { content: string }).content).toBe('b1');
   });
 
-  test("clicking a button for an expired/unknown session disables the row instead of throwing", async () => {
+  test('clicking a button for an expired/unknown session disables the row instead of throwing', async () => {
     const store = new MemoryPaginationStore();
     const paginator = createPaginator({ store });
 
     const updates: unknown[] = [];
     const ctx = {
-      params: { sessionId: "does-not-exist", direction: "next" },
+      params: { sessionId: 'does-not-exist', direction: 'next' },
       interaction: { update: async (payload: unknown) => updates.push(payload) },
       // biome-ignore lint/suspicious/noExplicitAny: minimal component context stub
     } as any;
@@ -172,11 +189,11 @@ describe("createPaginator", () => {
     store.dispose();
   });
 
-  test("auto-disables the row after the idle timeout elapses, via a single scheduled edit", async () => {
+  test('auto-disables the row after the idle timeout elapses, via a single scheduled edit', async () => {
     const paginator = createPaginator({ idleTimeoutMs: 20 });
     const interaction = fakeReplyableInteraction();
 
-    await paginator.reply(interaction, [{ content: "page 1" }, { content: "page 2" }]);
+    await paginator.reply(interaction, [{ content: 'page 1' }, { content: 'page 2' }]);
     expect(interaction.edits).toHaveLength(0);
 
     await new Promise((resolve) => setTimeout(resolve, 60));
@@ -186,10 +203,10 @@ describe("createPaginator", () => {
     expect(isDisabled(interaction.edits[0], 1)).toBe(true);
   });
 
-  test("a click before the timeout prevents the stale auto-disable from firing on the old timer", async () => {
+  test('a click before the timeout prevents the stale auto-disable from firing on the old timer', async () => {
     const paginator = createPaginator({ idleTimeoutMs: 40 });
     const interaction = fakeReplyableInteraction();
-    await paginator.reply(interaction, [{ content: "page 1" }, { content: "page 2" }]);
+    await paginator.reply(interaction, [{ content: 'page 1' }, { content: 'page 2' }]);
 
     await new Promise((resolve) => setTimeout(resolve, 20));
     const [nextId] = extractCustomIds(interaction.replies[0]).slice(1);
@@ -202,50 +219,50 @@ describe("createPaginator", () => {
     expect(interaction.edits).toHaveLength(0);
   });
 
-  test("pageSelect: off by default — no dropdown row is added", async () => {
+  test('pageSelect: off by default — no dropdown row is added', async () => {
     const paginator = createPaginator();
     const interaction = fakeReplyableInteraction();
-    await paginator.reply(interaction, [{ content: "page 1" }, { content: "page 2" }]);
+    await paginator.reply(interaction, [{ content: 'page 1' }, { content: 'page 2' }]);
 
     expect((interaction.replies[0] as { components: unknown[] }).components).toHaveLength(1);
   });
 
-  test("pageSelect: adds a dropdown with one option per page, marking the current page as default", async () => {
+  test('pageSelect: adds a dropdown with one option per page, marking the current page as default', async () => {
     const paginator = createPaginator({ pageSelect: true });
     const interaction = fakeReplyableInteraction();
-    await paginator.reply(interaction, [{ content: "a" }, { content: "b" }, { content: "c" }]);
+    await paginator.reply(interaction, [{ content: 'a' }, { content: 'b' }, { content: 'c' }]);
 
     const options = selectOptions(interaction.replies[0]);
     expect(options).toEqual([
-      { label: "Page 1", value: "0", default: true },
-      { label: "Page 2", value: "1", default: false },
-      { label: "Page 3", value: "2", default: false },
+      { label: 'Page 1', value: '0', default: true },
+      { label: 'Page 2', value: '1', default: false },
+      { label: 'Page 3', value: '2', default: false },
     ]);
   });
 
-  test("pageSelect: respects a custom page label", async () => {
+  test('pageSelect: respects a custom page label', async () => {
     const paginator = createPaginator({ pageSelect: true });
     const interaction = fakeReplyableInteraction();
-    await paginator.reply(interaction, [{ content: "a", label: "Overview" }, { content: "b" }]);
+    await paginator.reply(interaction, [{ content: 'a', label: 'Overview' }, { content: 'b' }]);
 
     const options = selectOptions(interaction.replies[0]);
-    expect(options[0]?.label).toBe("Overview");
+    expect(options[0]?.label).toBe('Overview');
   });
 
-  test("pageSelect: choosing an option jumps directly to that page and updates the default marker", async () => {
+  test('pageSelect: choosing an option jumps directly to that page and updates the default marker', async () => {
     const paginator = createPaginator({ pageSelect: true });
     const interaction = fakeReplyableInteraction();
-    await paginator.reply(interaction, [{ content: "a" }, { content: "b" }, { content: "c" }]);
+    await paginator.reply(interaction, [{ content: 'a' }, { content: 'b' }, { content: 'c' }]);
 
     const selectCustomId = extractSelectCustomId(interaction.replies[0]) as string;
-    const updates = await selectPage(paginator, selectCustomId, "2");
+    const updates = await selectPage(paginator, selectCustomId, '2');
 
-    expect((updates[0] as { content: string }).content).toBe("c");
+    expect((updates[0] as { content: string }).content).toBe('c');
     const options = selectOptions(updates[0]);
     expect(options.map((o) => o.default)).toEqual([false, false, true]);
   });
 
-  test("pageSelect: omitted when there are more than 25 pages, even if requested", async () => {
+  test('pageSelect: omitted when there are more than 25 pages, even if requested', async () => {
     const paginator = createPaginator({ pageSelect: true });
     const interaction = fakeReplyableInteraction();
     const pages = Array.from({ length: 26 }, (_, i) => ({ content: `page ${i}` }));
@@ -255,61 +272,115 @@ describe("createPaginator", () => {
     expect((interaction.replies[0] as { components: unknown[] }).components).toHaveLength(1);
   });
 
-  test("pageSelect: omitted for a single-page pager (nothing to jump to)", async () => {
+  test('pageSelect: omitted for a single-page pager (nothing to jump to)', async () => {
     const paginator = createPaginator({ pageSelect: true });
     const interaction = fakeReplyableInteraction();
-    await paginator.reply(interaction, [{ content: "only page" }]);
+    await paginator.reply(interaction, [{ content: 'only page' }]);
 
     expect((interaction.replies[0] as { components: unknown[] }).components).toHaveLength(1);
   });
 
-  test("pageSelect: the disabled row on expiry also disables the dropdown", async () => {
+  test('pageSelect: the disabled row on expiry also disables the dropdown', async () => {
     const paginator = createPaginator({ pageSelect: true, idleTimeoutMs: 20 });
     const interaction = fakeReplyableInteraction();
-    await paginator.reply(interaction, [{ content: "a" }, { content: "b" }]);
+    await paginator.reply(interaction, [{ content: 'a' }, { content: 'b' }]);
 
     await new Promise((resolve) => setTimeout(resolve, 60));
 
-    const edited = interaction.edits[0] as { components: { components: { data: { disabled?: boolean } }[] }[] };
+    const edited = interaction.edits[0] as {
+      components: { components: { data: { disabled?: boolean } }[] }[];
+    };
     expect(edited.components).toHaveLength(2);
     expect(edited.components[1]?.components[0]?.data.disabled).toBe(true);
   });
 
-  test("buttons: defaults to arrow emoji with no text label, no opinion forced beyond that", async () => {
+  test('buttons: defaults to arrow emoji with no text label, no opinion forced beyond that', async () => {
     const paginator = createPaginator();
     const interaction = fakeReplyableInteraction();
-    await paginator.reply(interaction, [{ content: "a" }, { content: "b" }]);
+    await paginator.reply(interaction, [{ content: 'a' }, { content: 'b' }]);
 
     const buttons = (
-      interaction.replies[0] as { components: { components: { toJSON(): { emoji?: unknown; label?: string } }[] }[] }
+      interaction.replies[0] as {
+        components: { components: { toJSON(): { emoji?: unknown; label?: string } }[] }[];
+      }
     ).components[0]?.components;
-    expect(buttons?.[0]?.toJSON().emoji).toMatchObject({ name: "⬅️" });
+    expect(buttons?.[0]?.toJSON().emoji).toMatchObject({ name: '⬅️' });
     expect(buttons?.[0]?.toJSON().label).toBeUndefined();
   });
 
-  test("buttons: a bot can override to plain text labels instead of emoji", async () => {
-    const paginator = createPaginator({ buttons: { previous: { label: "Back" }, next: { label: "Forward" } } });
+  test('buttons: a bot can override to plain text labels instead of emoji', async () => {
+    const paginator = createPaginator({
+      buttons: { previous: { label: 'Back' }, next: { label: 'Forward' } },
+    });
     const interaction = fakeReplyableInteraction();
-    await paginator.reply(interaction, [{ content: "a" }, { content: "b" }]);
+    await paginator.reply(interaction, [{ content: 'a' }, { content: 'b' }]);
 
     const buttons = (
-      interaction.replies[0] as { components: { components: { toJSON(): { emoji?: unknown; label?: string } }[] }[] }
+      interaction.replies[0] as {
+        components: { components: { toJSON(): { emoji?: unknown; label?: string } }[] }[];
+      }
     ).components[0]?.components;
-    expect(buttons?.[0]?.toJSON().label).toBe("Back");
+    expect(buttons?.[0]?.toJSON().label).toBe('Back');
     expect(buttons?.[0]?.toJSON().emoji).toBeUndefined();
-    expect(buttons?.[1]?.toJSON().label).toBe("Forward");
+    expect(buttons?.[1]?.toJSON().label).toBe('Forward');
   });
 
-  test("buttons: a bot can override just the emoji, keeping the default no-label presentation", async () => {
-    const paginator = createPaginator({ buttons: { previous: { emoji: "⏪" } } });
+  test('buttons: a bot can override just the emoji, keeping the default no-label presentation', async () => {
+    const paginator = createPaginator({ buttons: { previous: { emoji: '⏪' } } });
     const interaction = fakeReplyableInteraction();
-    await paginator.reply(interaction, [{ content: "a" }, { content: "b" }]);
+    await paginator.reply(interaction, [{ content: 'a' }, { content: 'b' }]);
 
     const buttons = (
-      interaction.replies[0] as { components: { components: { toJSON(): { emoji?: unknown; label?: string } }[] }[] }
+      interaction.replies[0] as {
+        components: { components: { toJSON(): { emoji?: unknown; label?: string } }[] }[];
+      }
     ).components[0]?.components;
-    expect(buttons?.[0]?.toJSON().emoji).toMatchObject({ name: "⏪" });
+    expect(buttons?.[0]?.toJSON().emoji).toMatchObject({ name: '⏪' });
     // "next" wasn't overridden — still the default.
-    expect(buttons?.[1]?.toJSON().emoji).toMatchObject({ name: "➡️" });
+    expect(buttons?.[1]?.toJSON().emoji).toMatchObject({ name: '➡️' });
+  });
+
+  test('reply() rejects an empty page list with a clear error instead of an invalid payload', async () => {
+    const paginator = createPaginator({ store: new MemoryPaginationStore() });
+
+    await expect(paginator.reply(fakeReplyableInteraction() as never, [])).rejects.toThrow(
+      /at least one page/,
+    );
+  });
+
+  test('invokerOnly: another user cannot page; the invoker can', async () => {
+    const store = new MemoryPaginationStore();
+    const paginator = createPaginator({ store, invokerOnly: true });
+    store.set('s1', { pages: [{ content: 'one' }, { content: 'two' }], index: 0 }, 60_000);
+
+    const stranger = await testComponent(paginator.component, {
+      customId: 'circe-paginate:s1:next',
+      user: { id: 'stranger' } as never,
+      message: { interactionMetadata: { user: { id: 'owner' } } },
+    });
+    expect(stranger.updates).toEqual([]);
+    expect(stranger.replies).toHaveLength(1);
+    expect(store.get('s1')?.index).toBe(0);
+
+    const owner = await testComponent(paginator.component, {
+      customId: 'circe-paginate:s1:next',
+      user: { id: 'owner' } as never,
+      message: { interactionMetadata: { user: { id: 'owner' } } },
+    });
+    expect(owner.updates).toHaveLength(1);
+    expect(store.get('s1')?.index).toBe(1);
+  });
+
+  test('without invokerOnly any user may page (a deliberately shared pager)', async () => {
+    const store = new MemoryPaginationStore();
+    const paginator = createPaginator({ store });
+    store.set('s1', { pages: [{ content: 'one' }, { content: 'two' }], index: 0 }, 60_000);
+
+    const result = await testComponent(paginator.component, {
+      customId: 'circe-paginate:s1:next',
+      user: { id: 'stranger' } as never,
+    });
+
+    expect(result.updates).toHaveLength(1);
   });
 });

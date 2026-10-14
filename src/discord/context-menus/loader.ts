@@ -1,11 +1,11 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { ModuleValidationError } from "../../errors/module-validation-error.js";
-import type { Logger } from "../../logging/logger.js";
-import { discoverModules } from "../module-loader.js";
-import type { ContextMenuCommandRegistry } from "./registry.js";
-import type { MessageCommandDefinition, UserCommandDefinition } from "./types.js";
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { ModuleValidationError } from '../../errors/module-validation-error.js';
+import type { Logger } from '../../logging/logger.js';
+import { discoverModules } from '../module-loader.js';
+import type { ContextMenuCommandRegistry } from './registry.js';
+import type { MessageCommandDefinition, UserCommandDefinition } from './types.js';
 
 export interface LoadContextMenuCommandsOptions {
   registry: ContextMenuCommandRegistry;
@@ -13,18 +13,18 @@ export interface LoadContextMenuCommandsOptions {
 }
 
 function validateContextMenuCommandShape(value: unknown): string[] {
-  if (typeof value !== "object" || value === null) {
-    return ["does not export a default context menu command definition object"];
+  if (typeof value !== 'object' || value === null) {
+    return ['does not export a default context menu command definition object'];
   }
 
   const candidate = value as Partial<UserCommandDefinition>;
   const issues: string[] = [];
 
-  if (typeof candidate.execute !== "function") {
-    issues.push("missing `execute`");
+  if (typeof candidate.execute !== 'function') {
+    issues.push('missing `execute`');
   }
-  if (typeof candidate.name !== "string") {
-    issues.push("missing `name`");
+  if (typeof candidate.name !== 'string') {
+    issues.push('missing `name`');
   }
 
   return issues;
@@ -46,19 +46,21 @@ export async function loadContextMenuCommands(
   const issues: { file: string; message: string }[] = [];
 
   const validUsers: { fileName: string; value: UserCommandDefinition }[] = [];
-  const usersDir = path.join(directoryPath, "users");
+  const usersDir = path.join(directoryPath, 'users');
   if (existsSync(usersDir)) {
     const { modules, failures } = await discoverModules(usersDir);
     issues.push(
       ...failures.map((failure) => ({
-        file: path.join("users", failure.fileName),
+        file: path.join('users', failure.fileName),
         message: `Failed to import: ${failure.cause instanceof Error ? failure.cause.message : String(failure.cause)}`,
       })),
     );
     for (const { fileName, value } of modules) {
       const shapeIssues = validateContextMenuCommandShape(value);
       if (shapeIssues.length > 0) {
-        issues.push(...shapeIssues.map((message) => ({ file: path.join("users", fileName), message })));
+        issues.push(
+          ...shapeIssues.map((message) => ({ file: path.join('users', fileName), message })),
+        );
       } else {
         validUsers.push({ fileName, value: value as UserCommandDefinition });
       }
@@ -66,19 +68,21 @@ export async function loadContextMenuCommands(
   }
 
   const validMessages: { fileName: string; value: MessageCommandDefinition }[] = [];
-  const messagesDir = path.join(directoryPath, "messages");
+  const messagesDir = path.join(directoryPath, 'messages');
   if (existsSync(messagesDir)) {
     const { modules, failures } = await discoverModules(messagesDir);
     issues.push(
       ...failures.map((failure) => ({
-        file: path.join("messages", failure.fileName),
+        file: path.join('messages', failure.fileName),
         message: `Failed to import: ${failure.cause instanceof Error ? failure.cause.message : String(failure.cause)}`,
       })),
     );
     for (const { fileName, value } of modules) {
       const shapeIssues = validateContextMenuCommandShape(value);
       if (shapeIssues.length > 0) {
-        issues.push(...shapeIssues.map((message) => ({ file: path.join("messages", fileName), message })));
+        issues.push(
+          ...shapeIssues.map((message) => ({ file: path.join('messages', fileName), message })),
+        );
       } else {
         validMessages.push({ fileName, value: value as MessageCommandDefinition });
       }
@@ -87,7 +91,7 @@ export async function loadContextMenuCommands(
 
   if (issues.length > 0) {
     throw new ModuleValidationError(`${issues.length} context menu command module issue(s) found`, {
-      category: "context-menus",
+      category: 'context-menus',
       issues,
     });
   }

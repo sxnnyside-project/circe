@@ -29,7 +29,7 @@ interface CommandDefinition<Metadata = Record<string, never>> {
 
 - `builder`: Required `SlashCommandBuilder` (or equivalent builder from `discord.js`).
 - `guards`: Optional array of `Guard` functions running before `execute`. The first denial short-circuits execution.
-- `autocomplete`: Optional handler called when Discord dispatches autocomplete requests for this command.
+- `autocomplete`: Optional handler called when Discord dispatches autocomplete requests for this command. Its context carries `interaction`, `client`, `guild`, `logger`, `correlationId` and `t` (for localizing choice names).
 - `execute`: Required execution function receiving `CommandContext`.
 
 `CommandContext` provides:
@@ -82,7 +82,7 @@ Right-click commands on users or messages are split into dedicated definitions:
 ### User Context Menu (`context-menus/users/`)
 
 ```ts
-interface UserCommandDefinition<Metadata = Record<string, never>> {
+interface UserCommandDefinition<Metadata = Record<string, never>> extends ContextMenuRegistrationOptions {
   readonly name: string;
   readonly guards?: readonly UserCommandGuard[];
   readonly metadata?: Metadata;
@@ -95,7 +95,7 @@ interface UserCommandDefinition<Metadata = Record<string, never>> {
 ### Message Context Menu (`context-menus/messages/`)
 
 ```ts
-interface MessageCommandDefinition<Metadata = Record<string, never>> {
+interface MessageCommandDefinition<Metadata = Record<string, never>> extends ContextMenuRegistrationOptions {
   readonly name: string;
   readonly guards?: readonly MessageCommandGuard[];
   readonly metadata?: Metadata;
@@ -104,6 +104,21 @@ interface MessageCommandDefinition<Metadata = Record<string, never>> {
 ```
 
 - `ctx.target`: The target `Message`.
+
+### Registration options
+
+Context menus have no `builder`, so the properties Discord enforces itself (before the entry is even shown) are declared on the definition and applied when Circe registers the command:
+
+```ts
+interface ContextMenuRegistrationOptions {
+  readonly defaultMemberPermissions?: PermissionResolvable | null; // 0n = administrators only
+  readonly contexts?: readonly InteractionContextType[];
+  readonly integrationTypes?: readonly ApplicationIntegrationType[];
+  readonly nameLocalizations?: LocalizationMap;
+}
+```
+
+Client-side hiding is a UX layer, not authorization: keep a guard (`hasPermission(...)`) as defense in depth.
 
 ---
 
@@ -135,6 +150,7 @@ Routes by longest-prefix match on `customId`, with optional structured parameter
 ```ts
 interface ComponentDefinition<Metadata = Record<string, never>, Params = undefined> {
   readonly prefix: string;
+  readonly guards?: readonly ComponentGuard<Params>[]; // run after parse, before execute
   readonly metadata?: Metadata;
   parse?(customId: string): Params;
   execute(ctx: ComponentContext<ComponentInteraction, Params>): void | Promise<void>;
@@ -148,6 +164,7 @@ Routes by URL-style path patterns with compile-time type inference:
 ```ts
 interface PatternComponentDefinition<Pattern extends string, Metadata = Record<string, never>> {
   readonly pattern: Pattern;
+  readonly guards?: readonly ComponentGuard<ParamsFromPattern<Pattern>>[];
   readonly metadata?: Metadata;
   execute(ctx: ComponentContext<ComponentInteraction, ParamsFromPattern<Pattern>>): void | Promise<void>;
 }
@@ -244,6 +261,7 @@ Modal submit handlers resolve via longest-prefix matching on `customId` (same ro
 ```ts
 interface ModalDefinition<Metadata = Record<string, never>> {
   readonly prefix: string;
+  readonly guards?: readonly ModalGuard[];
   readonly metadata?: Metadata;
   execute(ctx: ModalContext): void | Promise<void>;
 }
@@ -263,6 +281,12 @@ type Guard = (ctx: CommandContext) => GuardResult | Promise<GuardResult>;
 ```
 
 Returning `true` permits execution; returning a `string` blocks execution with that reason.
+
+Commands, subcommands, context menus, components and modals all accept `guards`. The built-in `guildOnly()`, `hasPermission()` and `cooldown()` read only the slice of the context they need (`guild`, `member`, `user`, `interaction.commandName`), so one guard instance is usable on every interaction kind that carries it. Denials are presented by `onGuardDenied` (commands), `onContextMenuGuardDenied`, `onComponentGuardDenied` and `onModalGuardDenied`; each defaults to an ephemeral reply with the reason.
+
+### Built-in Invoker Guard
+
+`invokerOnly()` restricts a component to the user who triggered the interaction that produced its message. Pass `resolveOwnerId` when the owner is encoded elsewhere (e.g. in the `customId`); an owner that cannot be established is denied.
 
 ### Built-in Cooldown Guard
 

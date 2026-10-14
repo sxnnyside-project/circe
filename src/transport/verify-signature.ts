@@ -37,9 +37,11 @@ export async function verifyDiscordSignature(options: VerifySignatureOptions): P
   }
 
   try {
-    const key = await crypto.subtle.importKey("raw", publicKeyBytes, { name: "Ed25519" }, false, ["verify"]);
+    const key = await crypto.subtle.importKey('raw', publicKeyBytes, { name: 'Ed25519' }, false, [
+      'verify',
+    ]);
     const message = new TextEncoder().encode(options.timestamp + options.body);
-    return await crypto.subtle.verify("Ed25519", key, signatureBytes, message);
+    return await crypto.subtle.verify('Ed25519', key, signatureBytes, message);
   } catch {
     return false;
   }

@@ -1,4 +1,4 @@
-import { AsyncLocalStorage } from "node:async_hooks";
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 interface CorrelationContext {
   correlationId: string;
@@ -25,7 +25,10 @@ export function getCorrelationId(): string | undefined {
  * This is the one place correlation IDs get created or propagated; callers
  * elsewhere never need to pass an ID by hand.
  */
-export function withCorrelationId<T>(fn: () => T, correlationId: string = generateCorrelationId()): T {
+export function withCorrelationId<T>(
+  fn: () => T,
+  correlationId: string = generateCorrelationId(),
+): T {
   const parent = storage.getStore();
   return storage.run({ correlationId, parentCorrelationId: parent?.correlationId }, fn);
 }
