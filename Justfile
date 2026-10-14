@@ -1,6 +1,6 @@
-# Install dependencies and set up git hooks.
+# Install dependencies from the committed lockfile and set up git hooks.
 install:
-    bun install
+    bun install --frozen-lockfile
 
 # Start the local dev loop (watch mode).
 dev:

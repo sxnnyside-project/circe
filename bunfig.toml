@@ -1,5 +1,2 @@
-[install]
-frozenLockfile = true
-
 [test]
 coverageSkipTestFiles = true
