@@ -35,7 +35,7 @@ build-deno      build into dist-node/ with deno tasks only (no Bun or npm), then
 consumers <pm>  install the packed tarball with npm, pnpm, yarn-classic, yarn-berry or yarn-berry-pnp and load it (CI runs all five)
 smoke           load the built package and run its CLI on node, deno and bun (needs all three; CI runs it after check)
 changelog       git-cliff release notes for the latest tag
-check           format:check, lint, typecheck, build, then test:coverage (gated at 85% lines / 75% functions) — the full gate, same as CI and the pre-commit hook
+check           format:check, lint, typecheck, build, then test:coverage (gated at 85% lines / 75% functions; runtime files no test loads count as 0%) — the full gate, same as CI and the pre-commit hook
 clean           rm -rf dist
 ```
 

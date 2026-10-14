@@ -47,21 +47,35 @@ const LEVEL_WEIGHT: Record<LogLevel, number> = {
   error: 40,
 };
 
+/** An `Error` has no enumerable own properties, so `JSON.stringify` would print it as `{}`. */
+function errorToJson(error: Error): Record<string, unknown> {
+  return {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+    ...(error.cause !== undefined ? { cause: error.cause } : {}),
+  };
+}
+
 /**
  * `JSON.stringify` throws on circular references and `BigInt`s. A logger's
  * job includes reporting failures, sometimes during shutdown — it must
  * never itself become the thing that throws. Falls back to a message-only
  * line rather than losing the entry (or crashing) when metadata can't be
- * serialized as-is.
+ * serialized as-is. Errors are always expanded: a bare `{}` would drop the
+ * very reason the line was written.
  */
 function safeStringify(value: unknown): string {
   try {
-    return JSON.stringify(value);
+    return JSON.stringify(value, (_key, v: unknown) => (v instanceof Error ? errorToJson(v) : v));
   } catch {
     const seen = new WeakSet();
     return JSON.stringify(value, (_key, v: unknown) => {
       if (typeof v === 'bigint') {
         return v.toString();
+      }
+      if (v instanceof Error) {
+        return errorToJson(v);
       }
       if (typeof v === 'object' && v !== null) {
         if (seen.has(v)) {

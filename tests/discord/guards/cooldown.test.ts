@@ -124,3 +124,29 @@ describe('MemoryCooldownStore', () => {
     store.dispose();
   });
 });
+
+describe('cooldown across sibling subcommands', () => {
+  function leafCtx(subcommand: string) {
+    return fakeCtx({
+      interaction: {
+        commandName: 'config',
+        channelId: 'channel-1',
+        options: {
+          getSubcommandGroup: () => 'roles',
+          getSubcommand: () => subcommand,
+        },
+      } as never,
+    });
+  }
+
+  test('a shared store keeps each leaf of a command group on its own cooldown', async () => {
+    const store = new MemoryCooldownStore();
+    const add = cooldown({ durationMs: 60_000, scope: 'user', store });
+    const remove = cooldown({ durationMs: 5_000, scope: 'user', store });
+
+    expect(await add(leafCtx('add'))).toBe(true);
+    expect(await remove(leafCtx('remove'))).toBe(true);
+    expect(typeof (await add(leafCtx('add')))).toBe('string');
+    store.dispose();
+  });
+});

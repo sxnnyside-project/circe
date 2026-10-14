@@ -62,6 +62,40 @@ async function importConfigFile(filePath: string): Promise<unknown> {
   }
 }
 
+/**
+ * Loads `circe.config.ts` from `cwd` and checks it has a default export. Shared
+ * by every command that reads it, so they all fail with the same messages.
+ */
+export async function loadConfigFile(
+  cwd: string,
+  // biome-ignore lint/suspicious/noExplicitAny: schema type is only known once loaded
+): Promise<{ configFile: CirceConfigFile<any>; filePath: string }> {
+  const filePath = path.join(cwd, CONFIG_FILE_NAME);
+
+  if (!existsSync(filePath)) {
+    throw new ConfigFileNotFoundError(`${CONFIG_FILE_NAME} not found in ${cwd}`, {
+      metadata: { file: filePath },
+    });
+  }
+
+  // Dynamic import crosses the type boundary into the developer's own
+  // module — its shape is asserted, not statically known, the same way
+  // `discoverModules` treats every module it imports.
+  const imported = (await importConfigFile(filePath)) as {
+    // biome-ignore lint/suspicious/noExplicitAny: schema type is only known once loaded
+    default?: CirceConfigFile<any>;
+  };
+
+  if (imported.default === undefined) {
+    throw new ConfigFileInvalidError(
+      `${CONFIG_FILE_NAME} must have a default export produced by defineCirceConfig(...)`,
+      { metadata: { file: filePath } },
+    );
+  }
+
+  return { configFile: imported.default, filePath };
+}
+
 function countRegisteredModules(app: CirceApp): number {
   return (
     app.commands.registry.size +
@@ -87,30 +121,7 @@ export interface PreparedApp {
  * differently (or, for `circe build`, not do at all).
  */
 export async function prepareApp(cwd: string, logger: Logger): Promise<PreparedApp> {
-  const configFilePath = path.join(cwd, CONFIG_FILE_NAME);
-
-  if (!existsSync(configFilePath)) {
-    throw new ConfigFileNotFoundError(`${CONFIG_FILE_NAME} not found in ${cwd}`, {
-      metadata: { file: configFilePath },
-    });
-  }
-
-  // Dynamic import crosses the type boundary into the developer's own
-  // module — its shape is asserted, not statically known, the same way
-  // `discoverModules` treats every module it imports.
-  const imported = (await importConfigFile(configFilePath)) as {
-    // biome-ignore lint/suspicious/noExplicitAny: schema type is only known once loaded
-    default?: CirceConfigFile<any>;
-  };
-
-  if (imported.default === undefined) {
-    throw new ConfigFileInvalidError(
-      `${CONFIG_FILE_NAME} must have a default export produced by defineCirceConfig(...)`,
-      { metadata: { file: configFilePath } },
-    );
-  }
-
-  const configFile = imported.default;
+  const { configFile, filePath: configFilePath } = await loadConfigFile(cwd);
   const config = configFile.config.load() as CirceCredentials;
   const scanRoot = path.resolve(cwd, configFile.scanRoot ?? './src');
   const resolved = await resolveIntegrations(configFile.integrations);

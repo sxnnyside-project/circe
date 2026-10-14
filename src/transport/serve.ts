@@ -13,6 +13,12 @@ export interface InteractionsServerOptions {
   readonly logger: Logger;
   /** Names the server in its startup log line. Defaults to `"HTTP interactions server"`. */
   readonly label?: string;
+  /**
+   * Called when the server cannot listen (port in use). The default only sets
+   * exit code 1; a caller that owns a running application passes a handler
+   * that shuts it down, so the process never lives on without its endpoint.
+   */
+  readonly onListenError?: (error: Error) => void;
 }
 
 export interface InteractionsServer {
@@ -116,6 +122,15 @@ export function createNodeInteractionsServer(
       });
   });
 
+  // Without a listener a bind failure (port in use) surfaces as a raw uncaught exception.
+  server.once('error', (error: NodeJS.ErrnoException) => {
+    options.logger.error(
+      `${options.label ?? 'HTTP interactions server'} could not listen on port ${options.port}`,
+      { error, code: error.code },
+    );
+    process.exitCode = 1;
+    options.onListenError?.(error);
+  });
   server.listen(options.port, options.host);
   options.logger.info(
     `${options.label ?? 'HTTP interactions server'} listening on port ${options.port}`,

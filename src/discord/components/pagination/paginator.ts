@@ -240,6 +240,7 @@ function disabledComponents(
 export function createPaginator(options: CreatePaginatorOptions = {}): Paginator {
   const prefix = options.id ?? DEFAULT_ID;
   const idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+  // shortcut: sessions hold live EmbedBuilders in this process, so a bot on several replicas needs sticky routing, then a store that serializes pages to JSON.
   const store = options.store ?? new MemoryPaginationStore();
   const pageSelect = options.pageSelect ?? false;
   const guards = options.invokerOnly ? [invokerOnly()] : [];

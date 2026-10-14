@@ -48,6 +48,23 @@ for (const record of records) {
   files.push({ path, linesFound, linesHit, functionsFound, functionsHit });
 }
 
+// A file no test ever loads is absent from lcov, so it would silently count as
+// covered. Declaration-only modules (type exports, no runtime code) are exempt.
+const covered = new Set(files.map((f) => f.path));
+const sourceFiles = (await Array.fromAsync(new Bun.Glob('src/**/*.ts').scan('.'))).sort();
+const isTypesOnly = (file: string) => /\/types\.ts$/.test(file);
+// A barrel only re-exports: it has no function, class, assignment or arrow to execute.
+const isBarrel = (text: string) => !/\b(function|class|const|let)\b|=>|\bawait\b/.test(text);
+const neverLoaded: string[] = [];
+for (const file of sourceFiles) {
+  if (covered.has(file) || isTypesOnly(file)) continue;
+  if (!isBarrel(await Bun.file(file).text())) neverLoaded.push(file);
+}
+for (const file of neverLoaded) {
+  const lines = (await Bun.file(file).text()).split('\n').filter((l) => l.trim() !== '').length;
+  files.push({ path: file, linesFound: lines, linesHit: 0, functionsFound: 0, functionsHit: 0 });
+}
+
 const totals = files.reduce(
   (acc, f) => ({
     linesFound: acc.linesFound + f.linesFound,

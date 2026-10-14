@@ -29,6 +29,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - `engines.node` is `>=22.18.0`, the first Node.js that runs `circe.config.ts` without a flag. On an older Node, `circe start|dev|build` explains this instead of printing `Unknown file extension ".ts"`.
+- `zod` peer range is `^3.24.0 || ^4.0.0`; CI runs the type check and tests against zod 4.
 - `circe init` generates a project that passes `circe build`: the example command has a name, `circe.config.ts` imports `./src/config.ts`, and a `tsconfig.json` allows `.ts` import specifiers. Its next steps name the package manager that ran it.
 - The CLI loads `.env` from the working directory (Bun already did; Node and Deno did not). Variables already set in the environment win.
 - `guildOnly()`, `hasPermission()` and `cooldown()` are typed over the context slice they read, so the same guard works on commands, context menus, components and modals. Assignable wherever a `Guard` was accepted; code that relied on their exact return type should re-check.
@@ -42,6 +43,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Native `Error` values in log metadata are written with `name`, `message`, `stack` and `cause` instead of `{}`.
+- `circe dev` loads `circe.config.ts` through the same loader as `start` and `build`, so it reports the same errors, and finds the CLI through `process.argv[1]`.
+- `cooldown()` keys include the command group and subcommand, so sibling leaves sharing a store no longer share a cooldown.
+- A port already in use is reported by name and stops `circe start` and the health server instead of surfacing as a raw exception.
 - A rejected second `start()` no longer tears down the already-running application.
 - Command registration honours `client.rest` options (custom `api` base, timeouts), like the gateway client does.
 - A failed `start()` no longer leaves the process half-alive: stop hooks run for whatever started, the gateway client is destroyed and the health server is closed. Stop hooks must therefore tolerate a partially started application.

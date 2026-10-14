@@ -37,6 +37,33 @@ const logger = createLogger({ sink: () => {} });
  * likely to have a bug in the request/response bridging.
  */
 describe('createNodeInteractionsServer', () => {
+  test('reports a port that is already in use instead of crashing with a raw exception', async () => {
+    const first = createNodeInteractionsServer({
+      port: 39230,
+      fetch: async () => new Response(null),
+      logger,
+    });
+    const errors: Error[] = [];
+    const previousExitCode = process.exitCode;
+    const second = createNodeInteractionsServer({
+      port: 39230,
+      fetch: async () => new Response(null),
+      logger,
+      onListenError: (error) => errors.push(error),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    try {
+      expect(errors).toHaveLength(1);
+      expect((errors[0] as NodeJS.ErrnoException).code).toBe('EADDRINUSE');
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = previousExitCode ?? 0;
+      first.stop();
+      second.stop();
+    }
+  });
+
   test('answers a real signed PING over a real socket with an inline Pong', async () => {
     const { keyPair, publicKey } = await generateKeyPair();
     const client = new Client({ intents: [] });

@@ -38,6 +38,7 @@ export async function runStart(cwd: string): Promise<void> {
         port: httpConfig.port ?? DEFAULT_HTTP_PORT,
         fetch: handler,
         logger,
+        onListenError: () => void app.stop(),
       });
       // Without this the listener keeps the process alive after shutdown.
       app.onStop(() => server.stop());

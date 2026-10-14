@@ -634,6 +634,7 @@ export function createCirce<Config extends CirceCredentials>(
           }),
           logger,
           label: 'Health server',
+          onListenError: () => void app.stop(),
         });
       }
 

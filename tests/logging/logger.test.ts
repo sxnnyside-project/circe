@@ -74,3 +74,26 @@ describe('createLogger', () => {
     expect(entries[0]?.correlationId).toBeUndefined();
   });
 });
+
+describe('error serialization', () => {
+  test('writes a native Error with its message and stack instead of an empty object', () => {
+    const lines: string[] = [];
+    const original = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string) => {
+      lines.push(chunk);
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      createLogger({ environment: 'production' }).error('failed', {
+        error: new Error('disk full', { cause: new Error('quota') }),
+      });
+    } finally {
+      process.stderr.write = original;
+    }
+
+    const entry = JSON.parse(lines.join(''));
+    expect(entry.metadata.error.message).toBe('disk full');
+    expect(entry.metadata.error.stack).toContain('disk full');
+    expect(entry.metadata.error.cause.message).toBe('quota');
+  });
+});

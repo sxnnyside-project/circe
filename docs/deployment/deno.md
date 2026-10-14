@@ -37,13 +37,14 @@ Deno enforces an explicit permission security model. Circe runtime commands requ
 | `--allow-net` | Connect to the Discord REST API, Gateway WebSocket, and bind the HTTP webhook port |
 | `--allow-env` | Read environment variables defined in credentials schemas |
 | `--allow-read` | Scan `scanRoot` (`src/`) for commands, events, and component definitions |
+| `--allow-run` | `circe dev` only: it restarts the bot as a child process on every file change |
 
 ### Local Development
 
-Run the CLI directly via npm specifier:
+Run the CLI directly via npm specifier. `dev` also needs `--allow-run`, because it restarts the bot as a child process on every change (the child inherits the permissions you grant here):
 
 ```bash
-deno run --allow-net --allow-env --allow-read npm:@sxnnyside/circe/cli dev
+deno run --allow-net --allow-env --allow-read --allow-run npm:@sxnnyside/circe/cli dev
 ```
 
 ### Production Execution

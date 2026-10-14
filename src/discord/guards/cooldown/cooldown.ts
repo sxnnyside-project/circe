@@ -16,7 +16,26 @@ export interface CooldownOptions {
 export interface CooldownContext {
   readonly user: User;
   readonly guild: Guild | null;
-  readonly interaction: { readonly commandName: string; readonly channelId: string | null };
+  readonly interaction: {
+    readonly commandName: string;
+    readonly channelId: string | null;
+    /** On chat-input interactions this is the options resolver; reading it tells sibling subcommands apart. */
+    readonly options?: unknown;
+  };
+}
+
+interface SubcommandReader {
+  getSubcommandGroup?(required?: boolean): string | null;
+  getSubcommand?(required?: boolean): string | null;
+}
+
+/** `config`, or `config:roles:add` for a leaf of a command-group tree, so sibling leaves never share a cooldown. */
+function commandKey(ctx: CooldownContext): string {
+  const { commandName } = ctx.interaction;
+  const options = ctx.interaction.options as SubcommandReader | undefined;
+  const group = options?.getSubcommandGroup?.(false);
+  const subcommand = options?.getSubcommand?.(false);
+  return [commandName, group, subcommand].filter((part) => part).join(':');
 }
 
 function resolveScopeId(ctx: CooldownContext, scope: CooldownScope): string | undefined {
@@ -47,7 +66,7 @@ export function cooldown(options: CooldownOptions): (ctx: CooldownContext) => Pr
       return true;
     }
 
-    const key = `${ctx.interaction.commandName}:${options.scope}:${scopeId}`;
+    const key = `${commandKey(ctx)}:${options.scope}:${scopeId}`;
     const remainingMs = await store.check(key);
 
     if (remainingMs > 0) {

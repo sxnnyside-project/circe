@@ -207,6 +207,8 @@ export const paginator = createPaginator({
 });
 ```
 
+> **One process.** A session keeps live `EmbedBuilder` objects in the process that created it. With the HTTP transport behind several replicas, a click that lands on another replica finds no session and shows the expired pager. Route a message's clicks to the same replica (sticky sessions), or supply a `PaginationStore` that serializes pages to JSON and rebuilds the embeds.
+
 #### Registering the Paginator Component
 
 Export the paginator's component definition anywhere inside `components/` so Circe dispatches button and select menu interactions to it:
