@@ -7,10 +7,47 @@ import type {
   ModalSubmitInteraction,
   User,
 } from 'discord.js';
+import {
+  type BitFieldResolvable,
+  MessageFlags,
+  MessageFlagsBitField,
+  type MessageFlagsString,
+} from 'discord.js';
 
 export interface TestReply {
   content: string;
   ephemeral?: boolean;
+  /** Message flags other than `Ephemeral`, which is reported as `ephemeral: true`. */
+  flags?: number;
+}
+
+/** A reply payload as a router writes it: `flags` may be a number, array or bitfield. */
+type RawReply = Omit<TestReply, 'flags'> & {
+  flags?: BitFieldResolvable<MessageFlagsString, number>;
+};
+
+/**
+ * Records `flags` containing `MessageFlags.Ephemeral` as `ephemeral: true`, so
+ * tests read one shape however the reply was written (number, array or
+ * bitfield). Any other flag stays in `flags`.
+ */
+function toTestReply(payload: RawReply): TestReply {
+  // `reply('text')` reaches the stub as a bare string; it carries no flags to normalize.
+  if (typeof payload !== 'object') {
+    return payload;
+  }
+  const { flags, ...rest } = payload;
+  if (flags === undefined) {
+    return rest;
+  }
+  const resolved = new MessageFlagsBitField(flags);
+  if (!resolved.has(MessageFlags.Ephemeral)) {
+    return { ...rest, flags: resolved.bitfield };
+  }
+  const remaining = resolved.remove(MessageFlags.Ephemeral);
+  return remaining.bitfield === 0
+    ? { ...rest, ephemeral: true }
+    : { ...rest, ephemeral: true, flags: remaining.bitfield };
 }
 
 export interface TestInteractionOptions {
@@ -71,12 +108,12 @@ export function createTestInteraction(options: TestInteractionOptions = {}): Tes
       },
       getSubcommandGroup: () => options.subcommandGroup ?? null,
     },
-    reply: async (payload: TestReply) => {
+    reply: async (payload: RawReply) => {
       interaction.replied = true;
-      replies.push(payload);
+      replies.push(toTestReply(payload));
     },
-    followUp: async (payload: TestReply) => {
-      followUps.push(payload);
+    followUp: async (payload: RawReply) => {
+      followUps.push(toTestReply(payload));
     },
   };
 
@@ -137,12 +174,12 @@ export function createTestModalInteraction(
         return value;
       },
     },
-    reply: async (payload: TestReply) => {
+    reply: async (payload: RawReply) => {
       interaction.replied = true;
-      replies.push(payload);
+      replies.push(toTestReply(payload));
     },
-    followUp: async (payload: TestReply) => {
-      followUps.push(payload);
+    followUp: async (payload: RawReply) => {
+      followUps.push(toTestReply(payload));
     },
   };
 
@@ -200,15 +237,15 @@ export function createTestComponentInteraction(
     client: options.client ?? ({} as Client),
     locale: options.locale ?? 'en-US',
     message: options.message ?? null,
-    reply: async (payload: TestReply) => {
+    reply: async (payload: RawReply) => {
       interaction.replied = true;
-      replies.push(payload);
+      replies.push(toTestReply(payload));
     },
-    followUp: async (payload: TestReply) => {
-      followUps.push(payload);
+    followUp: async (payload: RawReply) => {
+      followUps.push(toTestReply(payload));
     },
-    update: async (payload: TestReply) => {
-      updates.push(payload);
+    update: async (payload: RawReply) => {
+      updates.push(toTestReply(payload));
     },
   };
 

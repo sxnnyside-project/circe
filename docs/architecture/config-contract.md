@@ -37,6 +37,10 @@ export interface CirceConfigFile<Schema extends z.ZodType> {
   readonly client?: Omit<ClientOptions, "intents">;
   /** Serves `/health` and `/ready` on its own port; listens before login. */
   readonly health?: HealthConfig;
+  /** `'exit'` (default) shuts the bot down on an unhandled rejection; `'log'` only logs it. */
+  readonly onUnhandledRejection?: 'exit' | 'log';
+  /** Longest a signal- or crash-triggered shutdown may take before a forced exit. Defaults to 10000. */
+  readonly shutdownTimeoutMs?: number;
   /** Directory the CLI scans for modules, relative to circe.config.ts. Defaults to "./src". */
   readonly scanRoot?: string;
   /** Transport mode: "gateway" (default), "http", or "hybrid". */

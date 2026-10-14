@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { loadCommandGroups } from '../../src/discord/commands/groups/loader.js';
@@ -10,6 +10,9 @@ import { testCommand } from '../../src/testing/command.js';
 // discord.js — the temp dir has to live under the project root so Node/Bun
 // module resolution walks up to this package's own `node_modules`.
 const TEMP_ROOT = path.join(import.meta.dirname, '..', '..', '.tmp-test-testing-groups');
+
+// Removes the (empty) root once the file's runs are done, so a test run leaves nothing behind.
+afterAll(() => rm(TEMP_ROOT, { recursive: true, force: true }));
 
 async function withTempDir(
   files: Record<string, string>,

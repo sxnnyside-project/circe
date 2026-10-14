@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
-import { Events } from 'discord.js';
+import { Events, MessageFlags } from 'discord.js';
 import { ContextMenuCommandRegistry } from '../../../src/discord/context-menus/registry.js';
 import { attachContextMenuRouter } from '../../../src/discord/context-menus/router.js';
 import { createLogger, type LogEntry } from '../../../src/logging/logger.js';
 
-type Reply = { content: string; ephemeral?: boolean };
+type Reply = { content: string; flags?: number };
 
 function setup(
   options: Parameters<typeof attachContextMenuRouter>[1] extends infer O ? Partial<O> : never = {},
@@ -115,7 +115,7 @@ describe('context menu router', () => {
     await flush();
 
     expect(executed).toBe(false);
-    expect(replies).toEqual([{ content: 'Moderators only.', ephemeral: true }]);
+    expect(replies).toEqual([{ content: 'Moderators only.', flags: MessageFlags.Ephemeral }]);
   });
 
   test('onGuardDenied overrides the default reply', async () => {
@@ -166,7 +166,7 @@ describe('context menu router', () => {
     await flush();
 
     expect(replies).toEqual([
-      { content: 'This action is not currently available.', ephemeral: true },
+      { content: 'This action is not currently available.', flags: MessageFlags.Ephemeral },
     ]);
   });
 });

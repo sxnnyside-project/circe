@@ -22,12 +22,23 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `client` option (config file and `createCirce`): `partials`, `presence`, `allowedMentions`, cache/sweeper policy and any other discord.js `ClientOptions` except `intents`.
 - `health` option: `/health` (liveness) and `/ready` (readiness with named checks) served before login, optionally bound to a `host`.
 - `app.every()` / `ctx.every()`: non-overlapping interval tasks started on ready and cleared on shutdown. Registered after ready, they start immediately; non-positive intervals are rejected.
+- `onUnhandledRejection: 'exit' | 'log'` option on `createCirce` and in `circe.config.ts`: `'log'` keeps the bot running after an unhandled rejection.
+- `shutdownTimeoutMs` option on `createCirce` and in `circe.config.ts` (positive, finite): a signal- or crash-triggered shutdown that outlives it forces exit code 1; a second signal forces it immediately.
+- `./package.json` subpath export, and external sourcemaps with chunks under `dist/chunks/` in the published build.
 
 ### Changed
 
+- `engines.node` is `>=22.18.0`, the first Node.js that runs `circe.config.ts` without a flag. On an older Node, `circe start|dev|build` explains this instead of printing `Unknown file extension ".ts"`.
+- `circe init` generates a project that passes `circe build`: the example command has a name, `circe.config.ts` imports `./src/config.ts`, and a `tsconfig.json` allows `.ts` import specifiers. Its next steps name the package manager that ran it.
+- The CLI loads `.env` from the working directory (Bun already did; Node and Deno did not). Variables already set in the environment win.
 - `guildOnly()`, `hasPermission()` and `cooldown()` are typed over the context slice they read, so the same guard works on commands, context menus, components and modals. Assignable wherever a `Guard` was accepted; code that relied on their exact return type should re-check.
 - `circe <command> --help` and `--version` print help/version instead of running the command.
 - `bun run check` builds before running tests, so the cross-runtime Deno test always has a `dist/` to use.
+- Default error and denial replies set `flags: MessageFlags.Ephemeral` instead of the deprecated `ephemeral` option. `circe/testing` still records them as `ephemeral: true`.
+- `zod` is a peer dependency (`^3.24.0`) rather than a dependency: Circe only uses its types, which appear in the public API.
+- The HTTP transport answers 401 for missing signature headers before buffering the request body.
+- `app.stop()` runs `onStop` hooks and stops the health server even when `client.destroy()` throws, then rethrows. Overlapping `stop()` calls share one shutdown.
+- `circe/testing` records replies whose `flags` include `Ephemeral` (number, array or bitfield) as `ephemeral: true` and keeps any other flag in `flags`.
 
 ### Fixed
 
@@ -40,6 +51,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `BunSqliteCooldownStore` periodically deletes expired rows instead of keeping never-rechecked keys forever.
 - `createPaginator().reply()` throws a clear error for an empty page list.
 - `/ready` reuses its check results for one second.
+- `build` removes `dist/` first, and no longer ships declaration maps that pointed to unpublished sources.
 
 ## [1.0.0] — 2026-09-09
 

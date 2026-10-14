@@ -26,7 +26,7 @@
     "sxnnyside"
   ],
   "engines": {
-    "node": ">=22.0.0",
+    "node": ">=22.18.0",
     "bun": ">=1.4.0"
   },
   "main": "./dist/index.js",
@@ -51,10 +51,10 @@
       "default": "./dist/bun-sqlite.js"
     },
     "./cli": {
-      "types": "./dist/cli/index.d.ts",
       "import": "./dist/cli/index.js",
       "default": "./dist/cli/index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
@@ -62,7 +62,7 @@
   ],
   "scripts": {
     "dev": "bun run --watch src/index.ts",
-    "build": "bun build ./src/index.ts ./src/testing/index.ts ./src/cli/index.ts ./src/bun-sqlite.ts --outdir ./dist --target node --format esm --splitting --external discord.js && tsc -p tsconfig.build.json --emitDeclarationOnly && chmod +x ./dist/cli/index.js",
+    "build": "rm -rf dist && bun build ./src/index.ts ./src/testing/index.ts ./src/cli/index.ts ./src/bun-sqlite.ts --outdir ./dist --target node --format esm --splitting --external discord.js --sourcemap=external --chunk-naming 'chunks/[name]-[hash].[ext]' && tsc -p tsconfig.build.json --emitDeclarationOnly && chmod +x ./dist/cli/index.js",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:coverage": "bun scripts/coverage.ts",
@@ -78,9 +78,7 @@
     "build:node": "tsc -p tsconfig.node.json"
   },
   "peerDependencies": {
-    "discord.js": "^14.16.0"
-  },
-  "dependencies": {
+    "discord.js": "^14.16.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
@@ -91,7 +89,8 @@
     "@types/node": "22.20.5",
     "discord.js": "14.27.0",
     "husky": "9.1.7",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "zod": "3.25.76"
   },
   "packageManager": "bun@1.4.0",
   "author": {

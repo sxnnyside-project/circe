@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 import { type AddressInfo, createServer } from 'node:net';
 import { Events, Partials, SlashCommandBuilder } from 'discord.js';
 import { createCirce } from '../../src/application/app.js';
@@ -828,5 +828,170 @@ describe('createCirce', () => {
     } finally {
       server.stop(true);
     }
+  });
+});
+
+describe('process handlers and shutdown', () => {
+  function signalApp(options: {
+    onUnhandledRejection?: 'exit' | 'log';
+    shutdownTimeoutMs?: number;
+  }) {
+    const { logger } = silentLogger();
+    return createCirce({
+      config: baseConfig,
+      intents: [],
+      logger,
+      handleProcessSignals: true,
+      autoLogin: false,
+      rest: stubRest(),
+      ...options,
+    });
+  }
+
+  async function withCleanProcess(fn: () => Promise<void>): Promise<void> {
+    const previousExitCode = process.exitCode;
+    try {
+      await fn();
+    } finally {
+      process.exitCode = previousExitCode ?? 0;
+    }
+  }
+
+  /** A stop hook that stays pending until `release()` — a shutdown that hangs. */
+  function hangingStopHook(app: ReturnType<typeof signalApp>) {
+    let started = false;
+    let resolveHook: () => void = () => {};
+    app.onStop(
+      () =>
+        new Promise<void>((resolve) => {
+          started = true;
+          resolveHook = resolve;
+        }),
+    );
+    return async () => {
+      await waitFor(() => started);
+      resolveHook();
+    };
+  }
+
+  test('an unhandled rejection stops the app with exit code 1 by default', async () => {
+    await withCleanProcess(async () => {
+      const app = signalApp({});
+      await app.start();
+
+      process.emit('unhandledRejection', new Error('boom'), Promise.resolve());
+      await waitFor(() => app.state === 'stopped');
+
+      expect(process.exitCode).toBe(1);
+    });
+  });
+
+  test("onUnhandledRejection 'log' keeps the app running", async () => {
+    await withCleanProcess(async () => {
+      const { logger, entries } = silentLogger();
+      const app = createCirce({
+        config: baseConfig,
+        intents: [],
+        logger,
+        handleProcessSignals: true,
+        autoLogin: false,
+        rest: stubRest(),
+        onUnhandledRejection: 'log',
+      });
+      await app.start();
+
+      process.emit('unhandledRejection', new Error('boom'), Promise.resolve());
+
+      expect(entries.some((entry) => entry.message.includes('boom'))).toBe(true);
+      expect(app.state).toBe('running');
+      expect(process.exitCode).not.toBe(1);
+      await app.stop();
+    });
+  });
+
+  test('a shutdown that outlives shutdownTimeoutMs forces exit code 1', async () => {
+    await withCleanProcess(async () => {
+      const exit = spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+      const app = signalApp({ shutdownTimeoutMs: 20 });
+      const release = hangingStopHook(app);
+      await app.start();
+
+      process.emit('SIGTERM');
+      await waitFor(() => exit.mock.calls.length > 0);
+
+      expect(exit).toHaveBeenCalledWith(1);
+      exit.mockRestore();
+      await release();
+      await waitFor(() => app.state === 'stopped');
+    });
+  });
+
+  test('a second signal during shutdown forces exit immediately', async () => {
+    await withCleanProcess(async () => {
+      const exit = spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+      const app = signalApp({ shutdownTimeoutMs: 60_000 });
+      const release = hangingStopHook(app);
+      await app.start();
+
+      process.emit('SIGTERM');
+      process.emit('SIGTERM');
+
+      expect(exit).toHaveBeenCalledWith(1);
+      exit.mockRestore();
+      await release();
+      await waitFor(() => app.state === 'stopped');
+    });
+  });
+
+  test('a clean shutdown does not force an exit', async () => {
+    await withCleanProcess(async () => {
+      const exit = spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+      const app = signalApp({ shutdownTimeoutMs: 20 });
+      await app.start();
+
+      process.emit('SIGTERM');
+      await waitFor(() => app.state === 'stopped');
+      await Bun.sleep(40);
+
+      expect(exit).not.toHaveBeenCalled();
+      exit.mockRestore();
+    });
+  });
+
+  test.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects shutdownTimeoutMs %p at creation',
+    (shutdownTimeoutMs) => {
+      expect(() => signalApp({ shutdownTimeoutMs })).toThrow('shutdownTimeoutMs');
+    },
+  );
+
+  test('overlapping stop() calls share one shutdown', async () => {
+    const app = testApp();
+    let stops = 0;
+    app.onStop(() => {
+      stops += 1;
+    });
+    await app.start();
+
+    await Promise.all([app.stop(), app.stop()]);
+
+    expect(stops).toBe(1);
+  });
+
+  test('onStop hooks and the health server still stop when client.destroy() throws', async () => {
+    const app = testApp();
+    let stopped = false;
+    app.onStop(() => {
+      stopped = true;
+    });
+    await app.start();
+    app.client.destroy = async () => {
+      throw new Error('gateway teardown failed');
+    };
+
+    await expect(app.stop()).rejects.toThrow('gateway teardown failed');
+
+    expect(stopped).toBe(true);
+    expect(app.state).toBe('stopped');
   });
 });

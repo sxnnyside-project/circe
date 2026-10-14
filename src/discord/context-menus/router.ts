@@ -1,11 +1,4 @@
-import {
-  type Client,
-  Events,
-  GuildMember,
-  type Interaction,
-  type MessageContextMenuCommandInteraction,
-  type UserContextMenuCommandInteraction,
-} from 'discord.js';
+import { type Client, Events, GuildMember, type Interaction } from 'discord.js';
 import type { MiddlewareModule } from '../../application/middleware.js';
 import { runWithMiddleware } from '../../application/middleware.js';
 import { normalizeError } from '../../errors/normalize-error.js';
@@ -17,6 +10,7 @@ import type { Logger } from '../../logging/logger.js';
 import { reportError } from '../../observability/report-error.js';
 import type { ErrorReporter } from '../../observability/types.js';
 import type { GuardResult } from '../commands/types.js';
+import { safeEphemeralReply } from '../safe-respond.js';
 import { ContextMenuCommandError } from './errors.js';
 import type { ContextMenuCommandRegistry } from './registry.js';
 import type { MessageContextMenuCommandContext, UserContextMenuCommandContext } from './types.js';
@@ -50,28 +44,13 @@ export interface ContextMenuCommandRouterOptions {
 
 const defaultI18nResolver = new IdentityI18nResolver();
 
-async function safeRespond(
-  interaction: UserContextMenuCommandInteraction | MessageContextMenuCommandInteraction,
-  content: string,
-): Promise<void> {
-  try {
-    if (interaction.deferred || interaction.replied) {
-      await interaction.followUp({ content, ephemeral: true });
-    } else {
-      await interaction.reply({ content, ephemeral: true });
-    }
-  } catch {
-    // The interaction may already have expired or been deleted — nothing more to do.
-  }
-}
-
 async function defaultOnUnknown(
   ctx: UserContextMenuCommandContext | MessageContextMenuCommandContext,
 ): Promise<void> {
   ctx.logger.warn('Received interaction for an unregistered context menu command', {
     command: ctx.interaction.commandName,
   });
-  await safeRespond(ctx.interaction, 'This action is not currently available.');
+  await safeEphemeralReply(ctx.interaction, 'This action is not currently available.');
 }
 
 async function defaultOnGuardDenied(
@@ -79,7 +58,7 @@ async function defaultOnGuardDenied(
   reason: string,
 ): Promise<void> {
   ctx.logger.info('Context menu command blocked by guard', { reason });
-  await safeRespond(ctx.interaction, reason);
+  await safeEphemeralReply(ctx.interaction, reason);
 }
 
 async function defaultOnError(
@@ -87,7 +66,7 @@ async function defaultOnError(
   error: ContextMenuCommandError,
 ): Promise<void> {
   ctx.logger.error(error.message, { error, correlationId: error.correlationId });
-  await safeRespond(ctx.interaction, 'Something went wrong while running that action.');
+  await safeEphemeralReply(ctx.interaction, 'Something went wrong while running that action.');
 }
 
 /** Wires the router onto a live discord.js client's `interactionCreate` event, for both user and message context menu commands. */

@@ -46,6 +46,10 @@ smoke: build
     node dist/cli/index.js --version
     deno run -A dist/cli/index.js --version
 
+# Install the packed tarball with npm, pnpm, yarn-classic, yarn-berry or yarn-berry-pnp and check what a consumer gets.
+consumers pm: build
+    node scripts/consumers.mjs {{pm}}
+
 # Build into dist-node/ with Node's toolchain only (npm scripts + tsc, no Bun), then load it on Node.
 build-node:
     npm run build:node

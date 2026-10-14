@@ -1,6 +1,6 @@
 # Deploying on Node.js 22+
 
-Circe runs natively on Node.js 22 or later. The same `circe.config.ts` configuration, commands, and events run without code modifications.
+Circe runs natively on Node.js 22.18 or later (the first release that loads `circe.config.ts` without a flag). The same `circe.config.ts` configuration, commands, and events run without code modifications.
 
 ---
 

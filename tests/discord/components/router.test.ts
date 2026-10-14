@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { GuildMember } from 'discord.js';
+import { GuildMember, MessageFlags } from 'discord.js';
 import { ComponentError } from '../../../src/discord/components/errors.js';
 import { ComponentRegistry } from '../../../src/discord/components/registry.js';
 import { handleComponentInteraction } from '../../../src/discord/components/router.js';
@@ -12,8 +12,8 @@ import { createLogger, type LogEntry } from '../../../src/logging/logger.js';
  * Only the surface `handleComponentInteraction` actually touches is implemented.
  */
 function makeInteraction(customId: string, options: { guild?: boolean } = {}) {
-  const replies: { content: string; ephemeral?: boolean }[] = [];
-  const followUps: { content: string; ephemeral?: boolean }[] = [];
+  const replies: { content: string; flags?: number }[] = [];
+  const followUps: { content: string; flags?: number }[] = [];
 
   const interaction = {
     customId,
@@ -23,11 +23,11 @@ function makeInteraction(customId: string, options: { guild?: boolean } = {}) {
     member: null,
     user: { id: 'user-1', username: 'tester' },
     client: {} as never,
-    reply: async (payload: { content: string; ephemeral?: boolean }) => {
+    reply: async (payload: { content: string; flags?: number }) => {
       interaction.replied = true;
       replies.push(payload);
     },
-    followUp: async (payload: { content: string; ephemeral?: boolean }) => {
+    followUp: async (payload: { content: string; flags?: number }) => {
       followUps.push(payload);
     },
   };
@@ -49,7 +49,7 @@ describe('handleComponentInteraction', () => {
     await handleComponentInteraction(interaction as never, { registry, logger });
 
     expect(replies).toHaveLength(1);
-    expect(replies[0]?.ephemeral).toBe(true);
+    expect(replies[0]?.flags).toBe(MessageFlags.Ephemeral);
   });
 
   test('routes a button-style customId to its handler (prefix match)', async () => {

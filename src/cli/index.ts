@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { runBuild } from './build.js';
 import { runDev } from './dev.js';
+import { loadDotEnv } from './env.js';
 import { renderInitResult, runInit } from './init.js';
 import { completionScript, helpText, isShell, parseArgs, readVersion } from './interface.js';
 import { runStart } from './start.js';
@@ -24,6 +25,7 @@ switch (parsed.kind) {
     else usageError('completions requires a shell: bash, zsh, fish or powershell');
     break;
   case 'run':
+    loadDotEnv(process.cwd());
     switch (parsed.command) {
       case 'start':
         await runStart(process.cwd());

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
+import { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
 import type { CommandContext } from '../../src/discord/commands/types.js';
 import { hasPermission } from '../../src/discord/guards/permissions.js';
 import type { ModalContext } from '../../src/discord/modals/types.js';
@@ -30,6 +30,29 @@ describe('createTestInteraction', () => {
     await interaction.reply({ content: 'hi', ephemeral: true });
     expect(replies).toEqual([{ content: 'hi', ephemeral: true }]);
     expect(interaction.replied).toBe(true);
+  });
+
+  test('records flags carrying Ephemeral as ephemeral, in any resolvable form', async () => {
+    const { interaction, replies } = createTestInteraction();
+    await interaction.reply({ content: 'a', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'b', flags: [MessageFlags.Ephemeral] });
+    expect(replies).toEqual([
+      { content: 'a', ephemeral: true },
+      { content: 'b', ephemeral: true },
+    ]);
+  });
+
+  test('keeps flags other than Ephemeral on the recorded reply', async () => {
+    const { interaction, replies } = createTestInteraction();
+    await interaction.reply({
+      content: 'a',
+      flags: MessageFlags.Ephemeral | MessageFlags.SuppressEmbeds,
+    });
+    await interaction.reply({ content: 'b', flags: MessageFlags.SuppressEmbeds });
+    expect(replies).toEqual([
+      { content: 'a', ephemeral: true, flags: MessageFlags.SuppressEmbeds },
+      { content: 'b', flags: MessageFlags.SuppressEmbeds },
+    ]);
   });
 
   test('records followUp() calls separately from replies', async () => {

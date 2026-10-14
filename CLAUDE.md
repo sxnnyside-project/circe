@@ -6,7 +6,7 @@ Circe is a TypeScript/Bun-first Discord bot framework built on `discord.js`, for
 
 ## Topology
 
-**Monolithic.** One package (`@sxnnyside/circe`), four publishable entry points — `circe` (main), `circe/testing`, `circe/cli`, and `circe/bun-sqlite` (isolated so importing the main package never pulls in `bun:sqlite` on Node/Deno) — plus the `circe` CLI binary. No workspace/monorepo tooling.
+**Monolithic.** One package (`@sxnnyside/circe`), four publishable entry points — `circe` (main), `circe/testing`, `circe/cli` (the executable entry, for `deno run npm:@sxnnyside/circe/cli`: importing it runs the CLI, so it is not a library), and `circe/bun-sqlite` (isolated so importing the main package never pulls in `bun:sqlite` on Node/Deno) — plus the `circe` CLI binary. No workspace/monorepo tooling.
 
 ## Stack
 
@@ -32,6 +32,7 @@ format          biome format --write .
 bench           cross-runtime transport benchmark (not part of check)
 build-node      build into dist-node/ with npm + tsc only (no Bun), then load it on Node
 build-deno      build into dist-node/ with deno tasks only (no Bun or npm), then load it on Deno
+consumers <pm>  install the packed tarball with npm, pnpm, yarn-classic, yarn-berry or yarn-berry-pnp and load it (CI runs all five)
 smoke           load the built package and run its CLI on node, deno and bun (needs all three; CI runs it after check)
 changelog       git-cliff release notes for the latest tag
 check           format:check, lint, typecheck, build, then test:coverage (gated at 85% lines / 75% functions) — the full gate, same as CI and the pre-commit hook

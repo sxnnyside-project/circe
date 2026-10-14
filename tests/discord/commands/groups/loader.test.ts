@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { CommandError } from '../../../../src/discord/commands/errors.js';
@@ -13,6 +13,9 @@ import { createLogger } from '../../../../src/logging/logger.js';
 // project root (not the OS tmpdir) so Node/Bun module resolution walks up
 // to this package's own `node_modules` and finds discord.js.
 const TEMP_ROOT = path.join(import.meta.dirname, '..', '..', '..', '..', '.tmp-test-groups');
+
+// Removes the (empty) root once the file's runs are done, so a test run leaves nothing behind.
+afterAll(() => rm(TEMP_ROOT, { recursive: true, force: true }));
 
 async function withTempDir(
   files: Record<string, string>,

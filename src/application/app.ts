@@ -178,6 +178,19 @@ export interface CreateCirceOptions<Config extends CirceCredentials> {
    * lifecycle themselves.
    */
   handleProcessSignals?: boolean;
+  /**
+   * What the process handler does with an unhandled promise rejection:
+   * `'exit'` (default, same as Node) logs it and shuts the app down with exit
+   * code 1; `'log'` only logs it and keeps the bot running. Ignored when
+   * `handleProcessSignals` is `false`.
+   */
+  onUnhandledRejection?: 'exit' | 'log';
+  /**
+   * How long a signal- or crash-triggered shutdown may take before the
+   * process is forced to exit with code 1. Defaults to 10 seconds. A second
+   * signal during shutdown forces the exit immediately.
+   */
+  shutdownTimeoutMs?: number;
   /** Whether `start()` registers commands with Discord automatically after login. Defaults to `true`. */
   autoRegisterCommands?: boolean;
   /**
@@ -221,15 +234,56 @@ export interface CreateCirceOptions<Config extends CirceCredentials> {
   onError?: ErrorReporter;
 }
 
+/**
+ * Drops keys whose value is `undefined`: under `exactOptionalPropertyTypes`
+ * an optional property may be absent but never explicitly `undefined`, and a
+ * present-but-undefined handler would also shadow a router's own default.
+ */
+function omitUndefined<T extends Record<string, unknown>>(
+  value: T,
+): { [K in keyof T]?: Exclude<T[K], undefined> } {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as {
+    [K in keyof T]?: Exclude<T[K], undefined>;
+  };
+}
+
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+
 function installProcessHandlers<Config extends CirceCredentials>(
   app: CirceApp<Config>,
+  settings: { onUnhandledRejection: 'exit' | 'log'; shutdownTimeoutMs: number },
 ): () => void {
+  let shuttingDown = false;
+
+  // A hung `onStop` hook or gateway teardown must not keep the process alive
+  // until the orchestrator's SIGKILL, so a signal-driven shutdown is bounded.
+  const shutdown = (): void => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    const timer = setTimeout(() => {
+      app.logger.error('Shutdown timed out, forcing exit', {
+        timeoutMs: settings.shutdownTimeoutMs,
+      });
+      process.exit(1);
+    }, settings.shutdownTimeoutMs);
+    app
+      .stop()
+      .catch((error: unknown) => {
+        app.logger.error('Shutdown failed', { error: normalizeError(error) });
+        process.exitCode = 1;
+      })
+      .finally(() => clearTimeout(timer));
+  };
+
   const onSignal = (signal: NodeJS.Signals): void => {
+    if (shuttingDown) {
+      app.logger.warn(`Received ${signal} during shutdown, forcing exit`, { signal });
+      process.exit(1);
+    }
     app.logger.info(`Received ${signal}, shutting down`, { signal });
-    app.stop().catch((error: unknown) => {
-      app.logger.error('Shutdown failed after signal', { error: normalizeError(error) });
-      process.exitCode = 1;
-    });
+    shutdown();
   };
 
   const onUncaughtException = (error: unknown): void => {
@@ -239,7 +293,7 @@ function installProcessHandlers<Config extends CirceCredentials>(
       correlationId: normalized.correlationId,
     });
     process.exitCode = 1;
-    void app.stop();
+    shutdown();
   };
 
   const onUnhandledRejection = (reason: unknown): void => {
@@ -248,8 +302,10 @@ function installProcessHandlers<Config extends CirceCredentials>(
       error: normalized,
       correlationId: normalized.correlationId,
     });
-    process.exitCode = 1;
-    void app.stop();
+    if (settings.onUnhandledRejection === 'exit') {
+      process.exitCode = 1;
+      shutdown();
+    }
   };
 
   process.on('SIGINT', onSignal);
@@ -290,6 +346,14 @@ export function createCirce<Config extends CirceCredentials>(
       logger.error(error.message, { error });
     },
   });
+  if (
+    options.shutdownTimeoutMs !== undefined &&
+    !(Number.isFinite(options.shutdownTimeoutMs) && options.shutdownTimeoutMs > 0)
+  ) {
+    throw new RangeError(
+      `shutdownTimeoutMs must be a positive, finite number of milliseconds, got ${options.shutdownTimeoutMs}`,
+    );
+  }
   const handleProcessSignals = options.handleProcessSignals ?? true;
   const autoRegisterCommands = options.autoRegisterCommands ?? true;
   const autoLogin = options.autoLogin ?? true;
@@ -329,7 +393,7 @@ export function createCirce<Config extends CirceCredentials>(
       registerCommands({
         rest,
         clientId: options.config.clientId,
-        ...(options.config.guildId !== undefined ? { guildId: options.config.guildId } : {}),
+        ...omitUndefined({ guildId: options.config.guildId }),
         commands: commandRegistry.all,
         userContextMenuCommands: contextMenuCommandRegistry.allUser,
         messageContextMenuCommands: contextMenuCommandRegistry.allMessage,
@@ -383,6 +447,48 @@ export function createCirce<Config extends CirceCredentials>(
   };
 
   let uninstallProcessHandlers: (() => void) | undefined;
+
+  let stopInFlight: Promise<void> | undefined;
+
+  const runStop = async (): Promise<void> => {
+    if (lifecycle.state === 'created' || lifecycle.state === 'stopped') {
+      await lifecycle.stop();
+      return;
+    }
+
+    for (const timer of intervalTimers.splice(0)) {
+      clearInterval(timer);
+    }
+    let destroyError: unknown;
+    try {
+      await client.destroy();
+    } catch (error) {
+      // A failed gateway teardown must not strand the consumer's onStop
+      // resources (DB pools, ...) or the health server; it is rethrown last.
+      destroyError = error;
+    }
+
+    try {
+      // Consumer-registered onStop hooks (closing a DB pool, ...) run after
+      // the client stops receiving new interactions, not before.
+      await lifecycle.stop();
+    } finally {
+      // Last, so readiness keeps reporting not-ready while everything else
+      // tears down.
+      healthServer?.stop();
+      healthServer = undefined;
+      // Still installed while shutting down, so a repeated signal is
+      // answered by the forced exit instead of the runtime's default.
+      uninstallProcessHandlers?.();
+      uninstallProcessHandlers = undefined;
+    }
+
+    if (destroyError !== undefined) {
+      throw destroyError;
+    }
+
+    logger.info('Circe application stopped');
+  };
 
   const app: CirceApp<Config> = {
     config: options.config,
@@ -460,70 +566,55 @@ export function createCirce<Config extends CirceCredentials>(
           }
         });
         attachEvents(client, eventRegistry, logger.child({ component: 'events' }), options.onError);
+        const shared = {
+          middleware: options.middleware,
+          i18n: options.i18n,
+          onError: options.onError,
+        };
         attachCommandRouter(client, {
           registry: commandRegistry,
           logger: logger.child({ component: 'commands' }),
-          ...(options.onUnknownCommand !== undefined
-            ? { onUnknownCommand: options.onUnknownCommand }
-            : {}),
-          ...(options.onGuardDenied !== undefined ? { onGuardDenied: options.onGuardDenied } : {}),
-          ...(options.onCommandError !== undefined
-            ? { onCommandError: options.onCommandError }
-            : {}),
-          ...(options.middleware !== undefined ? { middleware: options.middleware } : {}),
-          ...(options.i18n !== undefined ? { i18n: options.i18n } : {}),
-          ...(options.onError !== undefined ? { onError: options.onError } : {}),
+          ...omitUndefined({
+            ...shared,
+            onUnknownCommand: options.onUnknownCommand,
+            onGuardDenied: options.onGuardDenied,
+            onCommandError: options.onCommandError,
+          }),
         });
         attachComponentRouter(client, {
           registry: componentRegistry,
           logger: logger.child({ component: 'components' }),
-          ...(options.onUnknownComponent !== undefined
-            ? { onUnknownComponent: options.onUnknownComponent }
-            : {}),
-          ...(options.onComponentError !== undefined
-            ? { onComponentError: options.onComponentError }
-            : {}),
-          ...(options.onComponentGuardDenied !== undefined
-            ? { onGuardDenied: options.onComponentGuardDenied }
-            : {}),
-          ...(options.middleware !== undefined ? { middleware: options.middleware } : {}),
-          ...(options.i18n !== undefined ? { i18n: options.i18n } : {}),
-          ...(options.onError !== undefined ? { onError: options.onError } : {}),
+          ...omitUndefined({
+            ...shared,
+            onUnknownComponent: options.onUnknownComponent,
+            onComponentError: options.onComponentError,
+            onGuardDenied: options.onComponentGuardDenied,
+          }),
         });
         attachAutocompleteRouter(client, {
           registry: commandRegistry,
           logger: logger.child({ component: 'commands' }),
-          ...(options.i18n !== undefined ? { i18n: options.i18n } : {}),
+          ...omitUndefined({ i18n: options.i18n }),
         });
         attachModalRouter(client, {
           registry: modalRegistry,
           logger: logger.child({ component: 'modals' }),
-          ...(options.onUnknownModal !== undefined
-            ? { onUnknownModal: options.onUnknownModal }
-            : {}),
-          ...(options.onModalError !== undefined ? { onModalError: options.onModalError } : {}),
-          ...(options.onModalGuardDenied !== undefined
-            ? { onGuardDenied: options.onModalGuardDenied }
-            : {}),
-          ...(options.middleware !== undefined ? { middleware: options.middleware } : {}),
-          ...(options.i18n !== undefined ? { i18n: options.i18n } : {}),
-          ...(options.onError !== undefined ? { onError: options.onError } : {}),
+          ...omitUndefined({
+            ...shared,
+            onUnknownModal: options.onUnknownModal,
+            onModalError: options.onModalError,
+            onGuardDenied: options.onModalGuardDenied,
+          }),
         });
         attachContextMenuRouter(client, {
           registry: contextMenuCommandRegistry,
           logger: logger.child({ component: 'commands' }),
-          ...(options.onUnknownContextMenuCommand !== undefined
-            ? { onUnknownContextMenuCommand: options.onUnknownContextMenuCommand }
-            : {}),
-          ...(options.onContextMenuGuardDenied !== undefined
-            ? { onGuardDenied: options.onContextMenuGuardDenied }
-            : {}),
-          ...(options.onContextMenuCommandError !== undefined
-            ? { onContextMenuCommandError: options.onContextMenuCommandError }
-            : {}),
-          ...(options.middleware !== undefined ? { middleware: options.middleware } : {}),
-          ...(options.i18n !== undefined ? { i18n: options.i18n } : {}),
-          ...(options.onError !== undefined ? { onError: options.onError } : {}),
+          ...omitUndefined({
+            ...shared,
+            onUnknownContextMenuCommand: options.onUnknownContextMenuCommand,
+            onGuardDenied: options.onContextMenuGuardDenied,
+            onContextMenuCommandError: options.onContextMenuCommandError,
+          }),
         });
       }
 
@@ -533,7 +624,7 @@ export function createCirce<Config extends CirceCredentials>(
       if (options.health && healthServer === undefined) {
         healthServer = startInteractionsServer({
           port: options.health.port,
-          ...(options.health.host !== undefined ? { host: options.health.host } : {}),
+          ...omitUndefined({ host: options.health.host }),
           fetch: createHealthHandler({
             client,
             expectGateway: autoLogin,
@@ -594,34 +685,21 @@ export function createCirce<Config extends CirceCredentials>(
       }
 
       if (handleProcessSignals) {
-        uninstallProcessHandlers = installProcessHandlers(app);
+        uninstallProcessHandlers = installProcessHandlers(app, {
+          onUnhandledRejection: options.onUnhandledRejection ?? 'exit',
+          shutdownTimeoutMs: options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS,
+        });
       }
 
       logger.info('Circe application started');
     },
-    async stop() {
-      if (lifecycle.state === 'created' || lifecycle.state === 'stopped') {
-        await lifecycle.stop();
-        return;
-      }
-
-      uninstallProcessHandlers?.();
-      uninstallProcessHandlers = undefined;
-      for (const timer of intervalTimers.splice(0)) {
-        clearInterval(timer);
-      }
-      await client.destroy();
-
-      // Consumer-registered onStop hooks (closing a DB pool, ...) run after
-      // the client stops receiving new interactions, not before.
-      await lifecycle.stop();
-
-      // Last, so readiness keeps reporting not-ready while everything else
-      // tears down.
-      healthServer?.stop();
-      healthServer = undefined;
-
-      logger.info('Circe application stopped');
+    stop() {
+      // One shutdown at a time: a signal arriving during a manual `stop()`
+      // joins it instead of destroying the client and running hooks twice.
+      stopInFlight ??= runStop().finally(() => {
+        stopInFlight = undefined;
+      });
+      return stopInFlight;
     },
   };
 

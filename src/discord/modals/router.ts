@@ -16,6 +16,7 @@ import type { Logger } from '../../logging/logger.js';
 import { reportError } from '../../observability/report-error.js';
 import type { ErrorReporter } from '../../observability/types.js';
 import type { GuardResult } from '../commands/types.js';
+import { safeEphemeralReply } from '../safe-respond.js';
 import { ModalError } from './errors.js';
 import type { ModalRegistry } from './registry.js';
 import type { ModalContext } from './types.js';
@@ -61,17 +62,17 @@ async function defaultOnUnknownModal(ctx: ModalContext): Promise<void> {
   ctx.logger.warn('Received submission for an unregistered modal', {
     customId: ctx.interaction.customId,
   });
-  await safeRespond(ctx.interaction, 'This form is not currently available.');
+  await safeEphemeralReply(ctx.interaction, 'This form is not currently available.');
 }
 
 async function defaultOnGuardDenied(ctx: ModalContext, reason: string): Promise<void> {
   ctx.logger.info('Modal blocked by guard', { reason });
-  await safeRespond(ctx.interaction, reason);
+  await safeEphemeralReply(ctx.interaction, reason);
 }
 
 async function defaultOnModalError(ctx: ModalContext, error: ModalError): Promise<void> {
   ctx.logger.error(error.message, { error, correlationId: error.correlationId });
-  await safeRespond(ctx.interaction, 'Something went wrong while handling that submission.');
+  await safeEphemeralReply(ctx.interaction, 'Something went wrong while handling that submission.');
 }
 
 /**
@@ -151,18 +152,6 @@ export async function handleModalInteraction(
       await (options.onModalError ?? defaultOnModalError)(ctx, modalError);
     }
   });
-}
-
-async function safeRespond(interaction: ModalSubmitInteraction, content: string): Promise<void> {
-  try {
-    if (interaction.deferred || interaction.replied) {
-      await interaction.followUp({ content, ephemeral: true });
-    } else {
-      await interaction.reply({ content, ephemeral: true });
-    }
-  } catch {
-    // The interaction may already have expired or been deleted — nothing more to do.
-  }
 }
 
 /** Wires the router onto a live discord.js client's `interactionCreate` event. */

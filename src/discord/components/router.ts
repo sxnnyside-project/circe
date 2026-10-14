@@ -10,6 +10,7 @@ import type { Logger } from '../../logging/logger.js';
 import { reportError } from '../../observability/report-error.js';
 import type { ErrorReporter } from '../../observability/types.js';
 import type { GuardResult } from '../commands/types.js';
+import { safeEphemeralReply } from '../safe-respond.js';
 import { ComponentError } from './errors.js';
 import type { ComponentRegistry } from './registry.js';
 import type { ComponentContext, ComponentInteraction } from './types.js';
@@ -61,12 +62,12 @@ async function defaultOnUnknownComponent(ctx: ComponentContext): Promise<void> {
   ctx.logger.warn('Received interaction for an unregistered component', {
     customId: ctx.interaction.customId,
   });
-  await safeRespond(ctx.interaction, 'This action is not currently available.');
+  await safeEphemeralReply(ctx.interaction, 'This action is not currently available.');
 }
 
 async function defaultOnGuardDenied(ctx: ComponentContext, reason: string): Promise<void> {
   ctx.logger.info('Component blocked by guard', { reason });
-  await safeRespond(ctx.interaction, reason);
+  await safeEphemeralReply(ctx.interaction, reason);
 }
 
 async function defaultOnComponentError(
@@ -74,7 +75,7 @@ async function defaultOnComponentError(
   error: ComponentError,
 ): Promise<void> {
   ctx.logger.error(error.message, { error, correlationId: error.correlationId });
-  await safeRespond(ctx.interaction, 'Something went wrong while handling that action.');
+  await safeEphemeralReply(ctx.interaction, 'Something went wrong while handling that action.');
 }
 
 /**
@@ -163,18 +164,6 @@ export async function handleComponentInteraction(
       await (options.onComponentError ?? defaultOnComponentError)(ctx, componentError);
     }
   });
-}
-
-async function safeRespond(interaction: ComponentInteraction, content: string): Promise<void> {
-  try {
-    if (interaction.deferred || interaction.replied) {
-      await interaction.followUp({ content, ephemeral: true });
-    } else {
-      await interaction.reply({ content, ephemeral: true });
-    }
-  } catch {
-    // The interaction may already have expired or been deleted — nothing more to do.
-  }
 }
 
 /** Wires the router onto a live discord.js client's `interactionCreate` event. */

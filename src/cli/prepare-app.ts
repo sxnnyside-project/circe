@@ -43,6 +43,25 @@ async function loadOptionalModule<T>(filePath: string): Promise<T | undefined> {
   return imported.default;
 }
 
+/**
+ * Node runs TypeScript natively only from 22.18 (22.6+ behind a flag); on an
+ * older Node the bare `Unknown file extension ".ts"` says nothing a bot
+ * author can act on.
+ */
+async function importConfigFile(filePath: string): Promise<unknown> {
+  try {
+    return await import(pathToFileURL(filePath).href);
+  } catch (error) {
+    if ((error as { code?: string }).code === 'ERR_UNKNOWN_FILE_EXTENSION') {
+      throw new ConfigFileInvalidError(
+        `${CONFIG_FILE_NAME} is TypeScript and this runtime cannot load it. Use Node.js 22.18 or later, Bun, or Deno.`,
+        { cause: error, metadata: { file: filePath } },
+      );
+    }
+    throw error;
+  }
+}
+
 function countRegisteredModules(app: CirceApp): number {
   return (
     app.commands.registry.size +
@@ -79,7 +98,7 @@ export async function prepareApp(cwd: string, logger: Logger): Promise<PreparedA
   // Dynamic import crosses the type boundary into the developer's own
   // module — its shape is asserted, not statically known, the same way
   // `discoverModules` treats every module it imports.
-  const imported = (await import(pathToFileURL(configFilePath).href)) as {
+  const imported = (await importConfigFile(configFilePath)) as {
     // biome-ignore lint/suspicious/noExplicitAny: schema type is only known once loaded
     default?: CirceConfigFile<any>;
   };
@@ -117,6 +136,12 @@ export async function prepareApp(cwd: string, logger: Logger): Promise<PreparedA
     intents: configFile.intents,
     ...(configFile.client !== undefined ? { client: configFile.client } : {}),
     ...(configFile.health !== undefined ? { health: configFile.health } : {}),
+    ...(configFile.onUnhandledRejection !== undefined
+      ? { onUnhandledRejection: configFile.onUnhandledRejection }
+      : {}),
+    ...(configFile.shutdownTimeoutMs !== undefined
+      ? { shutdownTimeoutMs: configFile.shutdownTimeoutMs }
+      : {}),
     logger,
     // "http"-only transport never opens a gateway connection; "hybrid" still does, for every non-interaction event.
     autoLogin: transport !== 'http',

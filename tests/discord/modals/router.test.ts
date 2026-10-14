@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { GuildMember } from 'discord.js';
+import { GuildMember, MessageFlags } from 'discord.js';
 import { ModalError } from '../../../src/discord/modals/errors.js';
 import { ModalRegistry } from '../../../src/discord/modals/registry.js';
 import { handleModalInteraction } from '../../../src/discord/modals/router.js';
@@ -9,8 +9,8 @@ import { createLogger, type LogEntry } from '../../../src/logging/logger.js';
 
 /** A minimal stand-in for a discord.js `ModalSubmitInteraction`. Only the surface `handleModalInteraction` actually touches is implemented. */
 function makeInteraction(customId: string, fields: Record<string, string> = {}) {
-  const replies: { content: string; ephemeral?: boolean }[] = [];
-  const followUps: { content: string; ephemeral?: boolean }[] = [];
+  const replies: { content: string; flags?: number }[] = [];
+  const followUps: { content: string; flags?: number }[] = [];
 
   const interaction = {
     customId,
@@ -23,11 +23,11 @@ function makeInteraction(customId: string, fields: Record<string, string> = {}) 
     fields: {
       getTextInputValue: (id: string) => fields[id] ?? '',
     },
-    reply: async (payload: { content: string; ephemeral?: boolean }) => {
+    reply: async (payload: { content: string; flags?: number }) => {
       interaction.replied = true;
       replies.push(payload);
     },
-    followUp: async (payload: { content: string; ephemeral?: boolean }) => {
+    followUp: async (payload: { content: string; flags?: number }) => {
       followUps.push(payload);
     },
   };
@@ -49,7 +49,7 @@ describe('handleModalInteraction', () => {
     await handleModalInteraction(interaction as never, { registry, logger });
 
     expect(replies).toHaveLength(1);
-    expect(replies[0]?.ephemeral).toBe(true);
+    expect(replies[0]?.flags).toBe(MessageFlags.Ephemeral);
   });
 
   test('routes a modal submission to its handler by prefix and reads field values', async () => {

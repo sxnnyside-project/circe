@@ -192,4 +192,25 @@ describe('createInteractionsHandler', () => {
     expect(response.status).toBe(413);
     client.destroy();
   });
+
+  test('rejects a request without signature headers before reading its body', async () => {
+    const { publicKey } = await generateKeyPair();
+    const client = new Client({ intents: [] });
+    const handler = createInteractionsHandler({ client, publicKey, logger });
+    let bodyRead = false;
+    const request = {
+      method: 'POST',
+      headers: new Headers(),
+      get body() {
+        bodyRead = true;
+        return null;
+      },
+    } as unknown as Request;
+
+    const response = await handler(request);
+
+    expect(response.status).toBe(401);
+    expect(bodyRead).toBe(false);
+    client.destroy();
+  });
 });

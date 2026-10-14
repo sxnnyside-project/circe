@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -13,6 +13,9 @@ import { createLogger } from '../../src/logging/logger.js';
 // project has to live under this package's own root (not the OS tmpdir)
 // so Node/Bun module resolution walks up to this package's `node_modules`.
 const TEMP_ROOT = path.join(import.meta.dirname, '..', '..', '.tmp-test-cli');
+
+// Removes the (empty) root once the file's runs are done, so a test run leaves nothing behind.
+afterAll(() => rm(TEMP_ROOT, { recursive: true, force: true }));
 const SRC = path.join(import.meta.dirname, '..', '..', 'src');
 
 async function withProject(
@@ -79,6 +82,14 @@ describe('prepareApp', () => {
     });
   });
 
+  test('explains a runtime that cannot load TypeScript instead of surfacing the bare loader error', async () => {
+    const config = `throw Object.assign(new Error('Unknown file extension ".ts"'), { code: 'ERR_UNKNOWN_FILE_EXTENSION' });`;
+    await withProject({ 'circe.config.ts': config }, async (dir) => {
+      const { logger } = silentLogger();
+      await expect(prepareApp(dir, logger)).rejects.toThrow('Node.js 22.18 or later');
+    });
+  });
+
   test('throws ConfigFileInvalidError when the file has no default export', async () => {
     await withProject({ 'circe.config.ts': 'export const notDefault = {};' }, async (dir) => {
       const { logger } = silentLogger();
@@ -98,6 +109,15 @@ describe('prepareApp', () => {
         expect(app.commands.registry.get('ping')).toBeDefined();
       },
     );
+  });
+
+  test('forwards shutdownTimeoutMs from circe.config.ts to the application', async () => {
+    // createCirce validates the value, so the rejection proves it was passed on.
+    const config = CONFIG_FIXTURE.replace('intents: [],', 'intents: [],\n  shutdownTimeoutMs: 0,');
+    await withProject({ 'circe.config.ts': config }, async (dir) => {
+      const { logger } = silentLogger();
+      await expect(prepareApp(dir, logger)).rejects.toThrow('shutdownTimeoutMs');
+    });
   });
 
   test('respects a custom scanRoot from circe.config.ts', async () => {

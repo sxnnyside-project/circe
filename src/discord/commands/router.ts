@@ -15,6 +15,7 @@ import { getCorrelationId, withCorrelationId } from '../../logging/context.js';
 import type { Logger } from '../../logging/logger.js';
 import { reportError } from '../../observability/report-error.js';
 import type { ErrorReporter } from '../../observability/types.js';
+import { safeEphemeralReply } from '../safe-respond.js';
 import { CommandError } from './errors.js';
 import type { CommandRegistry } from './registry.js';
 import type { CommandContext } from './types.js';
@@ -65,17 +66,17 @@ async function defaultOnUnknownCommand(ctx: CommandContext): Promise<void> {
   ctx.logger.warn('Received interaction for an unregistered command', {
     command: ctx.interaction.commandName,
   });
-  await safeRespond(ctx.interaction, 'This command is not currently available.');
+  await safeEphemeralReply(ctx.interaction, 'This command is not currently available.');
 }
 
 async function defaultOnGuardDenied(ctx: CommandContext, reason: string): Promise<void> {
   ctx.logger.info('Command blocked by guard', { reason });
-  await safeRespond(ctx.interaction, reason);
+  await safeEphemeralReply(ctx.interaction, reason);
 }
 
 async function defaultOnCommandError(ctx: CommandContext, error: CommandError): Promise<void> {
   ctx.logger.error(error.message, { error, correlationId: error.correlationId });
-  await safeRespond(ctx.interaction, 'Something went wrong while running that command.');
+  await safeEphemeralReply(ctx.interaction, 'Something went wrong while running that command.');
 }
 
 /**
@@ -156,21 +157,6 @@ export async function handleCommandInteraction(
       await (options.onCommandError ?? defaultOnCommandError)(ctx, commandError);
     }
   });
-}
-
-async function safeRespond(
-  interaction: ChatInputCommandInteraction,
-  content: string,
-): Promise<void> {
-  try {
-    if (interaction.deferred || interaction.replied) {
-      await interaction.followUp({ content, ephemeral: true });
-    } else {
-      await interaction.reply({ content, ephemeral: true });
-    }
-  } catch {
-    // The interaction may already have expired or been deleted — nothing more to do.
-  }
 }
 
 /** Wires the router onto a live discord.js client's `interactionCreate` event. */

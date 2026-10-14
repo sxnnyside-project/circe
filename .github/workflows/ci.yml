@@ -17,6 +17,7 @@ jobs:
     name: Conventional Commits
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -30,6 +31,7 @@ jobs:
   check:
     name: check (bun + node + deno)
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install just
@@ -42,7 +44,7 @@ jobs:
       # Node and Deno are installed so the cross-runtime transport tests run instead of skipping.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22.14.0
+          node-version: 22.18.0
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version: 2.6.8
@@ -51,3 +53,42 @@ jobs:
       - run: just smoke
       - run: just build-node
       - run: just build-deno
+
+  # What a consumer gets from the packed tarball under each package manager the README lists.
+  consumers:
+    name: consumer (${{ matrix.pm }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        pm: [npm, pnpm, yarn-classic, yarn-berry, yarn-berry-pnp]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install just
+        uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
+        with:
+          tool: just@1.58.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.18.0
+      - run: just install
+      - run: just consumers ${{ matrix.pm }}
+
+  # The peer range promises discord.js ^14.16.0 and the HTTP bridge reads an
+  # internal of it, so the floor is exercised, not just the newest release.
+  peer-minimum:
+    name: discord.js 14.16.0 (declared floor)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+      - run: bun add --no-save discord.js@14.16.0
+      - run: bun test

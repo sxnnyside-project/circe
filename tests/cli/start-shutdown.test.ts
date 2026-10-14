@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import { type ChildProcess, spawn } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
@@ -6,6 +6,9 @@ import path from 'node:path';
 
 // The temp project lives under this package so `zod` resolves from its node_modules.
 const TEMP_ROOT = path.join(import.meta.dirname, '..', '..', '.tmp-test-cli');
+
+// Removes the (empty) root once the file's runs are done, so a test run leaves nothing behind.
+afterAll(() => rm(TEMP_ROOT, { recursive: true, force: true }));
 const SRC = path.join(import.meta.dirname, '..', '..', 'src').replace(/\\/g, '/');
 
 async function freePort(): Promise<number> {

@@ -73,15 +73,16 @@ export function createInteractionsHandler(
 
     const signature = request.headers.get(SIGNATURE_HEADER);
     const timestamp = request.headers.get(TIMESTAMP_HEADER);
-    const body = await readCappedBody(request);
 
-    if (body === undefined) {
-      return new Response('Payload too large', { status: 413 });
-    }
-
+    // Before the body is buffered: an unsigned request costs nothing.
     if (!signature || !timestamp) {
       options.logger.warn('Rejected interaction request missing signature headers');
       return new Response('Missing signature headers', { status: 401 });
+    }
+
+    const body = await readCappedBody(request);
+    if (body === undefined) {
+      return new Response('Payload too large', { status: 413 });
     }
 
     const skew = Math.abs(Date.now() / 1000 - Number(timestamp));

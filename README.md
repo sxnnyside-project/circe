@@ -48,7 +48,7 @@ This is a Sxnnyside Project, part of the ecosystem's shared infrastructure.
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) (`>=1.4.0`), [Node.js](https://nodejs.org) (`>=22.0.0`), or [Deno](https://deno.com) (`>=2.0.0`)
+- [Bun](https://bun.sh) (`>=1.4.0`), [Node.js](https://nodejs.org) (`>=22.18.0`, the first release that runs TypeScript natively), or [Deno](https://deno.com) (`>=2.0.0`)
 - `discord.js` (`^14.16.0`) peer dependency
 
 ### Package Managers
@@ -57,12 +57,20 @@ This is a Sxnnyside Project, part of the ecosystem's shared infrastructure.
 # Bun (Recommended)
 bun add @sxnnyside/circe discord.js zod
 
-# Node.js
+# npm
 npm install @sxnnyside/circe discord.js zod
+
+# pnpm
+pnpm add @sxnnyside/circe discord.js zod
+
+# Yarn (Classic 1.x, or Berry 4.x with node-modules or Plug'n'Play)
+yarn add @sxnnyside/circe discord.js zod
 
 # Deno
 deno add npm:@sxnnyside/circe npm:discord.js npm:zod
 ```
+
+CI installs the packed tarball with npm, pnpm, Yarn Classic and Yarn Berry (both linkers) and checks that the `circe` binary and the entry points load. Yarn Classic prints `The engine "bun" appears to be invalid`; it is harmless, because `engines.bun` is only a hint for Bun users.
 
 ### From Source
 

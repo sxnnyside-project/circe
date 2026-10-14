@@ -14,7 +14,7 @@ const FILES: readonly ScaffoldFile[] = [
     relativePath: CONFIG_FILE,
     content: `import { GatewayIntentBits } from "discord.js";
 import { defineCirceConfig } from "@sxnnyside/circe";
-import config from "./src/config.js";
+import config from "./src/config.ts";
 
 export default defineCirceConfig({
   config,
@@ -40,12 +40,32 @@ export default defineConfig(
 import { defineCommand } from "@sxnnyside/circe";
 
 export default defineCommand({
-  builder: new SlashCommandBuilder().setDescription("Replies with pong."),
+  builder: new SlashCommandBuilder().setName("ping").setDescription("Replies with pong."),
   async execute(ctx) {
     await ctx.interaction.reply("pong");
   },
 });
 `,
+  },
+  {
+    // `.ts` import specifiers are what Node and Deno resolve without a build step.
+    relativePath: 'tsconfig.json',
+    content: `${JSON.stringify(
+      {
+        compilerOptions: {
+          target: 'ESNext',
+          module: 'ESNext',
+          moduleResolution: 'Bundler',
+          strict: true,
+          noEmit: true,
+          allowImportingTsExtensions: true,
+          skipLibCheck: true,
+        },
+        include: ['circe.config.ts', 'src'],
+      },
+      null,
+      2,
+    )}\n`,
   },
   {
     relativePath: '.env.example',
@@ -68,7 +88,7 @@ export interface InitResult {
 
 /**
  * Scaffolds a new Circe project in `cwd`: `circe.config.ts`, a typed
- * `src/config.ts`, one example command, and `.env.example`/`.gitignore`.
+ * `src/config.ts`, one example command, `tsconfig.json`, and `.env.example`/`.gitignore`.
  * Never overwrites a file that's already there — a file existing is treated
  * as "the developer already made a decision here," same principle as
  * `prepareApp` never guessing at a missing `circe.config.ts` instead of
@@ -96,7 +116,25 @@ export async function runInit(cwd: string): Promise<InitResult> {
   return { created, skipped };
 }
 
-export function renderInitResult(result: InitResult): string {
+export type PackageManager = 'bun' | 'npm' | 'pnpm' | 'yarn';
+
+const COMMANDS: Record<PackageManager, { add: string; run: string }> = {
+  bun: { add: 'bun add', run: 'bun x circe' },
+  npm: { add: 'npm install', run: 'npx circe' },
+  pnpm: { add: 'pnpm add', run: 'pnpm exec circe' },
+  yarn: { add: 'yarn add', run: 'yarn circe' },
+};
+
+/** The manager that launched this process, from the `npm_config_user_agent` every one of them sets; npm when unknown. */
+export function detectPackageManager(userAgent: string | undefined): PackageManager {
+  const name = userAgent?.split('/')[0];
+  return name === 'bun' || name === 'pnpm' || name === 'yarn' ? name : 'npm';
+}
+
+export function renderInitResult(
+  result: InitResult,
+  packageManager: PackageManager = detectPackageManager(process.env.npm_config_user_agent),
+): string {
   const lines: string[] = [];
 
   for (const file of result.created) {
@@ -110,9 +148,9 @@ export function renderInitResult(result: InitResult): string {
     lines.push(
       '',
       'Next steps:',
-      '  1. bun install @sxnnyside/circe discord.js zod',
+      `  1. ${COMMANDS[packageManager].add} @sxnnyside/circe discord.js zod`,
       '  2. cp .env.example .env and fill in DISCORD_TOKEN',
-      '  3. bun x circe dev',
+      `  3. ${COMMANDS[packageManager].run} dev`,
     );
   }
 
