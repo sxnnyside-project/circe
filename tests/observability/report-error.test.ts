@@ -87,4 +87,38 @@ describe('reportError', () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]?.message).toContain('Error reporter threw');
   });
+
+  test('passes semantic telemetry fields (guildId, channelId, userId, timestamp) to the reporter', async () => {
+    let capturedContext: unknown;
+    const { logger } = silentLogger();
+    const error = new CirceError('failed');
+    const timestamp = new Date().toISOString();
+
+    await reportError(
+      (_err, ctx) => {
+        capturedContext = ctx;
+      },
+      error,
+      {
+        kind: 'command',
+        name: 'ban',
+        correlationId: 'c-123',
+        timestamp,
+        guildId: 'g-456',
+        channelId: 'ch-789',
+        userId: 'u-101',
+      },
+      logger,
+    );
+
+    expect(capturedContext).toEqual({
+      kind: 'command',
+      name: 'ban',
+      correlationId: 'c-123',
+      timestamp,
+      guildId: 'g-456',
+      channelId: 'ch-789',
+      userId: 'u-101',
+    });
+  });
 });

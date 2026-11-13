@@ -58,6 +58,43 @@ describe('CirceError', () => {
     expect(serialized.cause.message).toBe('inner failure');
     expect(serialized.cause.metadata).toEqual({ step: 1 });
   });
+
+  test('toJSON is cycle-safe and handles circular cause chains without stack overflow', () => {
+    const errA = new CirceError('Error A');
+    const errB = new CirceError('Error B', { cause: errA });
+    // Introduce circular reference
+    (errA as { cause: unknown }).cause = errB;
+
+    expect(() => errA.toJSON()).not.toThrow();
+    const serialized = JSON.parse(JSON.stringify(errA.toJSON()));
+    expect(serialized.message).toBe('Error A');
+    expect(serialized.cause.message).toBe('Error B');
+    expect(serialized.cause.cause).toBe('[CircularCause]');
+  });
+
+  test('toJSON safely converts BigInts in metadata to strings', () => {
+    const error = new CirceError('discord error', {
+      metadata: { guildId: 123456789012345678n, shardId: 2n },
+    });
+
+    const json = error.toJSON();
+    expect(json.metadata).toEqual({ guildId: '123456789012345678', shardId: '2' });
+    expect(() => JSON.stringify(json)).not.toThrow();
+  });
+
+  test('toJSON handles AggregateError preserving child errors', () => {
+    const child1 = new Error('child 1');
+    const child2 = new CirceError('child 2', { metadata: { code: 'ERR_CHILD' } });
+    const agg = new AggregateError([child1, child2], 'multiple failures');
+    const error = new CirceError('operation failed', { cause: agg });
+
+    const serialized = JSON.parse(JSON.stringify(error));
+    expect(serialized.cause.name).toBe('AggregateError');
+    expect(Array.isArray(serialized.cause.errors)).toBe(true);
+    expect(serialized.cause.errors[0].message).toBe('child 1');
+    expect(serialized.cause.errors[1].message).toBe('child 2');
+    expect(serialized.cause.errors[1].metadata.code).toBe('ERR_CHILD');
+  });
 });
 
 describe('normalizeError', () => {
@@ -66,13 +103,14 @@ describe('normalizeError', () => {
     expect(normalizeError(original)).toBe(original);
   });
 
-  test('wraps a plain Error, preserving it as cause and marking it unexpected', () => {
-    const original = new Error('plain failure');
+  test('wraps a plain Error, preserving it as cause, marking unexpected, and recording originalName', () => {
+    const original = new TypeError('cannot read property of undefined');
     const normalized = normalizeError(original);
     expect(normalized).toBeInstanceOf(CirceError);
-    expect(normalized.message).toBe('plain failure');
+    expect(normalized.message).toBe('cannot read property of undefined');
     expect(normalized.cause).toBe(original);
     expect(normalized.operational).toBe(false);
+    expect(normalized.metadata.originalName).toBe('TypeError');
   });
 
   test('wraps a non-Error thrown value using the fallback message', () => {

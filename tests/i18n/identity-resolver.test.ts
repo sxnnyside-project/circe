@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { IdentityI18nResolver } from '../../src/i18n/identity-resolver.js';
+import { IdentityI18nResolver } from '../../src/localization/resolver.js';
 
 describe('IdentityI18nResolver', () => {
   test('returns the key verbatim, ignoring locale and params', () => {

@@ -2,13 +2,15 @@ import { type Client, Events, GuildMember, type Interaction } from 'discord.js';
 import type { MiddlewareModule } from '../../application/middleware.js';
 import { runWithMiddleware } from '../../application/middleware.js';
 import { normalizeError } from '../../errors/normalize-error.js';
-import { IdentityI18nResolver } from '../../i18n/identity-resolver.js';
-import { createTranslator, i18nContextOf } from '../../i18n/translator.js';
-import type { I18nResolver } from '../../i18n/types.js';
+import {
+  createTranslator,
+  IdentityLocalizationResolver,
+  type LocalizationResolver,
+  localizationContextOf,
+} from '../../localization/resolver.js';
 import { getCorrelationId, withCorrelationId } from '../../logging/context.js';
 import type { Logger } from '../../logging/logger.js';
-import { reportError } from '../../observability/report-error.js';
-import type { ErrorReporter } from '../../observability/types.js';
+import { type ErrorReporter, reportError } from '../../observability/report-error.js';
 import type { GuardResult } from '../commands/types.js';
 import { safeEphemeralReply } from '../safe-respond.js';
 import { ComponentError } from './errors.js';
@@ -51,12 +53,12 @@ export interface ComponentRouterOptions {
   onGuardDenied?: ComponentGuardDeniedHandler;
   middleware?: MiddlewareModule;
   /** Defaults to a resolver that returns every key verbatim, untranslated. */
-  i18n?: I18nResolver;
+  i18n?: LocalizationResolver;
   /** Called for every error this router's boundary catches, decoupled from the user-facing reply — for external reporting (OpenTelemetry, Sentry, metrics). */
   onError?: ErrorReporter;
 }
 
-const defaultI18nResolver = new IdentityI18nResolver();
+const defaultLocalizationResolver = new IdentityLocalizationResolver();
 
 async function defaultOnUnknownComponent(ctx: ComponentContext): Promise<void> {
   ctx.logger.warn('Received interaction for an unregistered component', {
@@ -103,9 +105,9 @@ export async function handleComponentInteraction(
       logger,
       correlationId,
       t: createTranslator(
-        options.i18n ?? defaultI18nResolver,
+        options.i18n ?? defaultLocalizationResolver,
         interaction.locale,
-        i18nContextOf(interaction),
+        localizationContextOf(interaction),
       ),
     };
 
@@ -158,7 +160,15 @@ export async function handleComponentInteraction(
       await reportError(
         options.onError,
         componentError,
-        { kind: 'component', name: interaction.customId, correlationId },
+        {
+          kind: 'component',
+          name: interaction.customId,
+          correlationId,
+          timestamp: new Date().toISOString(),
+          guildId: interaction.guildId ?? undefined,
+          channelId: interaction.channelId ?? undefined,
+          userId: interaction.user.id,
+        },
         logger,
       );
       await (options.onComponentError ?? defaultOnComponentError)(ctx, componentError);

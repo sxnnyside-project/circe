@@ -12,12 +12,13 @@ import type {
 } from '../config/circe-config.js';
 import { resolveIntegrations, type ScanCategory } from '../config/integration.js';
 import { CirceError } from '../errors/circe-error.js';
-import type { I18nResolver } from '../i18n/types.js';
+import type { LocalizationResolver } from '../localization/resolver.js';
 import type { Logger } from '../logging/logger.js';
 
 const CONFIG_FILE_NAME = 'circe.config.ts';
 const MIDDLEWARE_FILE_NAME = 'middleware.ts';
 const ERROR_BOUNDARY_FILE_NAME = 'error.ts';
+const LOCALIZATION_FILE_NAME = 'localization.ts';
 const I18N_FILE_NAME = 'i18n.ts';
 
 /** Raised when `circe.config.ts` is missing from the project root. */
@@ -140,13 +141,25 @@ export async function prepareApp(cwd: string, logger: Logger): Promise<PreparedA
   const errorBoundary = await loadOptionalModule<ErrorBoundaryModule>(
     path.join(scanRoot, ERROR_BOUNDARY_FILE_NAME),
   );
-  const i18n = await loadOptionalModule<I18nResolver>(path.join(scanRoot, I18N_FILE_NAME));
+  const localization =
+    (await loadOptionalModule<LocalizationResolver>(path.join(scanRoot, LOCALIZATION_FILE_NAME))) ??
+    (await loadOptionalModule<LocalizationResolver>(path.join(scanRoot, I18N_FILE_NAME)));
 
   const app = createCirce({
     config,
     intents: configFile.intents,
     ...(configFile.client !== undefined ? { client: configFile.client } : {}),
-    ...(configFile.health !== undefined ? { health: configFile.health } : {}),
+    ...(configFile.health !== undefined
+      ? {
+          health: {
+            ...configFile.health,
+            checks: {
+              ...configFile.health.checks,
+              ...resolved.healthChecks,
+            },
+          },
+        }
+      : {}),
     ...(configFile.onUnhandledRejection !== undefined
       ? { onUnhandledRejection: configFile.onUnhandledRejection }
       : {}),
@@ -157,7 +170,7 @@ export async function prepareApp(cwd: string, logger: Logger): Promise<PreparedA
     // "http"-only transport never opens a gateway connection; "hybrid" still does, for every non-interaction event.
     autoLogin: transport !== 'http',
     ...(middleware !== undefined ? { middleware } : {}),
-    ...(i18n !== undefined ? { i18n } : {}),
+    ...(localization !== undefined ? { localization } : {}),
     ...errorBoundary,
   });
 

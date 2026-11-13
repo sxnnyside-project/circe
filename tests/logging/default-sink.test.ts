@@ -4,7 +4,7 @@ import { createLogger } from '../../src/logging/logger.js';
 /**
  * Regression coverage for the default sink's JSON serialization: it must
  * never throw on values `JSON.stringify` chokes on (circular references,
- * BigInt) — a logger that crashes while reporting a failure is worse than
+ * BigInt, throwing getters) — a logger that crashes while reporting a failure is worse than
  * one that reports a degraded entry.
  */
 function captureStdout(fn: () => void): string {
@@ -52,8 +52,23 @@ describe('default sink', () => {
     expect(parsed.metadata.circular.self).toBe('[Circular]');
   });
 
-  test('does not throw on a BigInt metadata value', () => {
+  test('does not throw on a BigInt metadata value and serializes it as string', () => {
     const logger = createLogger({ environment: 'production' });
-    expect(() => captureStdout(() => logger.info('has a bigint', { big: 10n }))).not.toThrow();
+    const output = captureStdout(() =>
+      logger.info('has a snowflake', { snowflake: 123456789012345678n }),
+    );
+    const parsed = JSON.parse(output.trim());
+    expect(parsed.metadata.snowflake).toBe('123456789012345678');
+  });
+
+  test('does not crash when metadata has a property with a throwing getter', () => {
+    const evil = {
+      get boom(): string {
+        throw new Error('Explosive getter');
+      },
+    };
+
+    const logger = createLogger({ environment: 'production' });
+    expect(() => captureStdout(() => logger.info('evil metadata', { evil }))).not.toThrow();
   });
 });

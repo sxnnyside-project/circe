@@ -22,18 +22,39 @@ export type {
   MiddlewareModule,
 } from './application/middleware.js';
 export { defineMiddleware } from './application/middleware.js';
-export type { CirceConfigFile, HttpTransportConfig, TransportMode } from './config/circe-config.js';
+
+// Configuration & Integrations
+export type {
+  CirceConfigFile,
+  HttpTransportConfig,
+  TransportMode,
+} from './config/circe-config.js';
 export { defineCirceConfig } from './config/circe-config.js';
-export type { CirceConfig, ConfigSource } from './config/config.js';
-export { defineConfig } from './config/config.js';
-export type { ConfigIssue } from './config/errors.js';
-export { ConfigError } from './config/errors.js';
+export type {
+  CirceConfig,
+  ConfigSource,
+  EnvConfig,
+  SafeParseSchema,
+} from './config/env-config.js';
+export {
+  defineConfig,
+  defineEnvConfig,
+} from './config/env-config.js';
+export type { ConfigErrorOptions, ConfigIssue } from './config/errors.js';
+export { ConfigError, issuesFromZodError } from './config/errors.js';
 export type {
   CirceIntegration,
   CirceIntegrationContext,
+  IntervalRegistration,
+  ResolvedIntegrations,
   ScanCategory,
 } from './config/integration.js';
-export { defineIntegration, IntegrationError } from './config/integration.js';
+export {
+  defineIntegration,
+  IntegrationError,
+  resolveIntegrations,
+} from './config/integration.js';
+
 export { CommandError } from './discord/commands/errors.js';
 export type {
   CommandGroupDefinition,
@@ -128,6 +149,8 @@ export type {
 } from './discord/modals/router.js';
 export type { ModalContext, ModalDefinition, ModalGuard } from './discord/modals/types.js';
 export { defineModal } from './discord/modals/types.js';
+
+// Core Error Architecture
 export type { CirceErrorOptions } from './errors/circe-error.js';
 export { CirceError } from './errors/circe-error.js';
 export type { DiscoveryConflictErrorOptions } from './errors/discovery-conflict-error.js';
@@ -138,11 +161,41 @@ export type {
 } from './errors/module-validation-error.js';
 export { ModuleValidationError } from './errors/module-validation-error.js';
 export { normalizeError } from './errors/normalize-error.js';
-export type { HealthCheck, HealthConfig } from './health/handler.js';
-export { IdentityI18nResolver } from './i18n/identity-resolver.js';
-export type { Translator } from './i18n/translator.js';
-export type { I18nContext, I18nResolver } from './i18n/types.js';
-export { defineI18nResolver } from './i18n/types.js';
+
+// Health & Readiness Probes
+export type {
+  HealthCheck,
+  HealthConfig,
+  HealthHandlerOptions,
+  HealthProbeResponse,
+  HealthProbeStatus,
+} from './health/handler.js';
+export { createHealthHandler } from './health/handler.js';
+// Localization (l10n, i18n & g11n)
+// Legacy i18n Compatibility (Deprecated)
+export type {
+  DiscordLocale,
+  I18nContext,
+  I18nResolver,
+  LocalizationContext,
+  LocalizationInteractionSource,
+  LocalizationResolver,
+  ResolveInteractionLocaleOptions,
+  Translator,
+} from './localization/resolver.js';
+export {
+  createTranslator,
+  defineI18nResolver,
+  defineLocalizationResolver,
+  IdentityI18nResolver,
+  IdentityLocalizationResolver,
+  i18nContextOf,
+  interpolate,
+  localizationContextOf,
+  resolveInteractionLocale,
+} from './localization/resolver.js';
+
+// Logging & Correlation
 export {
   generateCorrelationId,
   getCorrelationId,
@@ -159,10 +212,30 @@ export type {
   LogSink,
 } from './logging/logger.js';
 export { createLogger } from './logging/logger.js';
-export type { ErrorReportContext, ErrorReporter, ErrorReportKind } from './observability/types.js';
+
+// Observability & Telemetry
+export type {
+  ErrorReportContext,
+  ErrorReporter,
+  ErrorReportKind,
+} from './observability/report-error.js';
+
+// Runtime & Platform Introspection
+export type { Runtime } from './runtime/detect.js';
+export { detectRuntime } from './runtime/detect.js';
+export type { Watcher, WatchTarget } from './runtime/watcher.js';
+export { createWatcher } from './runtime/watcher.js';
 export type { InteractionsHttpHandlerOptions } from './transport/http-handler.js';
 export { createInteractionsHandler } from './transport/http-handler.js';
-export type { InteractionsServer, InteractionsServerOptions } from './transport/serve.js';
+export type {
+  InteractionsServer,
+  InteractionsServerOptions,
+} from './transport/serve.js';
 export { startInteractionsServer } from './transport/serve.js';
 export type { VerifySignatureOptions } from './transport/verify-signature.js';
-export { verifyDiscordSignature } from './transport/verify-signature.js';
+// Transport & HTTP Interactions
+export {
+  DISCORD_SIGNATURE_HEADER,
+  DISCORD_TIMESTAMP_HEADER,
+  verifyDiscordSignature,
+} from './transport/verify-signature.js';

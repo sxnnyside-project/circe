@@ -18,12 +18,19 @@ import type {
   ModalGuardDeniedHandler,
   UnknownModalHandler,
 } from '../discord/modals/router.js';
+import type { ErrorReporter } from '../observability/report-error.js';
 
 /**
- * A bot's `error.ts` — the same reply-shaping hooks `createCirce()` already
- * accepts as options, discoverable by fixed file name instead of requiring
- * the bot to pass them manually. Every field is optional; an absent one
- * falls back to the router's own plain-ephemeral-reply default.
+ * A bot's `error.ts` — the error boundaries and reply-shaping hooks discovered
+ * by convention under `scanRoot` (default: `./src/error.ts`).
+ *
+ * Every field is optional; an absent reply hook falls back to the router's own
+ * default ephemeral reply.
+ *
+ * Includes `onError`: the central telemetry hook for external observability
+ * platforms (Sentry, Datadog, OpenTelemetry, Prometheus, Black Pillar).
+ *
+ * @public
  */
 export interface ErrorBoundaryModule {
   onUnknownCommand?: UnknownCommandHandler;
@@ -38,9 +45,18 @@ export interface ErrorBoundaryModule {
   onUnknownContextMenuCommand?: UnknownContextMenuCommandHandler;
   onContextMenuGuardDenied?: ContextMenuGuardDeniedHandler;
   onContextMenuCommandError?: ContextMenuCommandErrorHandler;
+  /**
+   * Central telemetry hook for reporting errors to external observability platforms.
+   * Runs alongside user-facing reply hooks without affecting what the user sees in Discord.
+   */
+  onError?: ErrorReporter;
 }
 
-/** Identity helper for a bot's `error.ts` — same purpose as `defineCommand`. */
+/**
+ * Identity helper for a bot's `error.ts` definition — provides type inference at call site.
+ *
+ * @public
+ */
 export function defineErrorBoundary(definition: ErrorBoundaryModule): ErrorBoundaryModule {
   return definition;
 }

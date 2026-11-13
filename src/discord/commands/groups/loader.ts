@@ -149,6 +149,12 @@ async function loadSubgroup(
   const builder = new SlashCommandSubcommandGroupBuilder()
     .setName(subgroupName)
     .setDescription(subgroup.description);
+  if (subgroup.nameLocalizations !== undefined) {
+    builder.setNameLocalizations(subgroup.nameLocalizations);
+  }
+  if (subgroup.descriptionLocalizations !== undefined) {
+    builder.setDescriptionLocalizations(subgroup.descriptionLocalizations);
+  }
   const route = new Map<string, SubcommandDefinition>();
 
   for (const filePath of files) {
@@ -182,6 +188,12 @@ async function loadGroup(
 
   const group = await loadGroupMetadata(groupFile, path.join(relativeGroupPath, GROUP_FILE_NAME));
   const builder = new SlashCommandBuilder().setName(group.name).setDescription(group.description);
+  if (group.nameLocalizations !== undefined) {
+    builder.setNameLocalizations(group.nameLocalizations);
+  }
+  if (group.descriptionLocalizations !== undefined) {
+    builder.setDescriptionLocalizations(group.descriptionLocalizations);
+  }
   const route = new Map<string, SubcommandDefinition>();
 
   for (const filePath of files) {

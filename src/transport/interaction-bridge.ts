@@ -25,6 +25,10 @@ interface ClientWithActions {
  * by a test that exercises it against the real installed discord.js — if
  * a future version restructures `actions`, that test fails loudly in CI
  * instead of this breaking silently in production.
+ *
+ * @internal
+ * @param client - Discord.js Client instance to dispatch the interaction through.
+ * @param data - Raw parsed Discord API interaction object.
  */
 export function dispatchInteraction(client: Client, data: unknown): void {
   (client as unknown as ClientWithActions).actions.InteractionCreate.handle(data);

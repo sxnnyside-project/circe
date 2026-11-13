@@ -2,8 +2,7 @@ import type { Client, ClientEvents } from 'discord.js';
 import { normalizeError } from '../../errors/normalize-error.js';
 import { getCorrelationId, withCorrelationId } from '../../logging/context.js';
 import type { Logger } from '../../logging/logger.js';
-import { reportError } from '../../observability/report-error.js';
-import type { ErrorReporter } from '../../observability/types.js';
+import { type ErrorReporter, reportError } from '../../observability/report-error.js';
 import { EventError } from './errors.js';
 import type { EventRegistry } from './registry.js';
 import type { EventDefinition } from './types.js';
@@ -43,7 +42,12 @@ export function createEventHandler<EventName extends keyof ClientEvents>(
         await reportError(
           onError,
           eventError,
-          { kind: 'event', name: String(event.name), correlationId: getCorrelationId() },
+          {
+            kind: 'event',
+            name: String(event.name),
+            correlationId: getCorrelationId(),
+            timestamp: new Date().toISOString(),
+          },
           logger,
         );
       }

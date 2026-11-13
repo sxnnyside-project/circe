@@ -1,8 +1,11 @@
 import { type AutocompleteInteraction, type Client, Events, type Interaction } from 'discord.js';
 import { normalizeError } from '../../errors/normalize-error.js';
-import { IdentityI18nResolver } from '../../i18n/identity-resolver.js';
-import { createTranslator, i18nContextOf } from '../../i18n/translator.js';
-import type { I18nResolver } from '../../i18n/types.js';
+import {
+  createTranslator,
+  IdentityLocalizationResolver,
+  type LocalizationResolver,
+  localizationContextOf,
+} from '../../localization/resolver.js';
 import { getCorrelationId, withCorrelationId } from '../../logging/context.js';
 import type { Logger } from '../../logging/logger.js';
 import { CommandError } from './errors.js';
@@ -13,10 +16,10 @@ export interface AutocompleteRouterOptions {
   registry: CommandRegistry;
   logger: Logger;
   /** Defaults to a resolver that returns every key verbatim, untranslated. */
-  i18n?: I18nResolver;
+  i18n?: LocalizationResolver;
 }
 
-const defaultI18nResolver = new IdentityI18nResolver();
+const defaultLocalizationResolver = new IdentityLocalizationResolver();
 
 /**
  * Discord requires an autocomplete response within 3 seconds and only
@@ -62,9 +65,9 @@ export async function handleAutocompleteInteraction(
       logger,
       correlationId,
       t: createTranslator(
-        options.i18n ?? defaultI18nResolver,
+        options.i18n ?? defaultLocalizationResolver,
         interaction.locale,
-        i18nContextOf(interaction),
+        localizationContextOf(interaction),
       ),
     };
 

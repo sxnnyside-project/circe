@@ -1,27 +1,62 @@
+import { Buffer } from 'node:buffer';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { Logger } from '../logging/logger.js';
 import { detectRuntime } from '../runtime/detect.js';
 import { MAX_REQUEST_BODY_BYTES } from './limits.js';
 
+/**
+ * Thrown when the inbound request body exceeds MAX_REQUEST_BODY_BYTES.
+ * @internal
+ */
 export class RequestBodyTooLargeError extends Error {}
 
+/**
+ * Options for configuring and starting the HTTP Interactions Endpoint server.
+ *
+ * @public
+ */
 export interface InteractionsServerOptions {
+  /** Port the HTTP interactions server listens on. */
   readonly port: number;
-  /** Interface to bind. Defaults to the runtime's own default (all interfaces). */
-  readonly host?: string;
-  readonly fetch: (request: Request) => Promise<Response>;
-  readonly logger: Logger;
-  /** Names the server in its startup log line. Defaults to `"HTTP interactions server"`. */
-  readonly label?: string;
+
   /**
-   * Called when the server cannot listen (port in use). The default only sets
-   * exit code 1; a caller that owns a running application passes a handler
-   * that shuts it down, so the process never lives on without its endpoint.
+   * Interface to bind.
+   *
+   * @defaultValue All interfaces (`"0.0.0.0"` or `"::"`).
+   */
+  readonly host?: string;
+
+  /** Portable Web Fetch request-to-response handler. */
+  readonly fetch: (request: Request) => Promise<Response>;
+
+  /** Logger instance for recording startup, shutdown, and request errors. */
+  readonly logger: Logger;
+
+  /**
+   * Names the server in its startup log line.
+   *
+   * @defaultValue `"HTTP interactions server"`
+   */
+  readonly label?: string;
+
+  /**
+   * Called when the server cannot listen (e.g. port already in use). Supported across
+   * all runtimes (Bun, Node 22+, Deno 2+). Sets exit code 1 before invoking this callback.
+   *
+   * @defaultValue `undefined`
    */
   readonly onListenError?: (error: Error) => void;
 }
 
+/**
+ * Handle to a running HTTP interactions server.
+ *
+ * @public
+ */
 export interface InteractionsServer {
+  /**
+   * Stops the server and closes all active sockets.
+   */
   stop(): void;
 }
 
@@ -41,6 +76,14 @@ interface DenoServeNamespace {
     options: { port: number; hostname?: string; onListen?: () => void },
     handler: (request: Request) => Promise<Response>,
   ): { shutdown(): Promise<void> };
+}
+
+function getBunGlobal(): BunServeNamespace | undefined {
+  return (globalThis as { Bun?: BunServeNamespace }).Bun;
+}
+
+function getDenoGlobal(): DenoServeNamespace | undefined {
+  return (globalThis as { Deno?: DenoServeNamespace }).Deno;
 }
 
 function nodeRequestToWebRequest(request: IncomingMessage): Promise<Request> {
@@ -102,6 +145,10 @@ async function writeWebResponseToNode(
  * Isolated and exported separately from `startInteractionsServer` so it
  * can be exercised directly in tests regardless of which runtime is
  * actually detected.
+ *
+ * @internal
+ * @param options - Server configuration options.
+ * @returns Active `InteractionsServer` handle.
  */
 export function createNodeInteractionsServer(
   options: InteractionsServerOptions,
@@ -144,40 +191,84 @@ export function createNodeInteractionsServer(
  * `createInteractionsHandler` output on whichever runtime is detected:
  * `Bun.serve` on Bun, `Deno.serve` on Deno, and a `node:http` bridge on
  * Node — the same handler function runs unmodified on all three.
+ *
+ * @remarks
+ * Runtime dispatch:
+ * - Bun: Uses high-performance native `Bun.serve` with `maxRequestBodySize` cap.
+ * - Deno: Uses `Deno.serve` with async `server.shutdown()` on stop.
+ * - Node: Uses `node:http` bridge with streaming buffer size validation.
+ *
+ * @example
+ * ```ts
+ * const server = startInteractionsServer({
+ *   port: 8787,
+ *   fetch: interactionsHandler,
+ *   logger,
+ * });
+ * // On shutdown:
+ * server.stop();
+ * ```
+ *
+ * @param options - Server configuration and fetch handler options.
+ * @returns An `InteractionsServer` instance capable of graceful termination via `stop()`.
+ * @throws Error If port binding fails or native runtime namespace is unavailable.
+ * @public
  */
 export function startInteractionsServer(options: InteractionsServerOptions): InteractionsServer {
   const runtime = detectRuntime();
 
   if (runtime === 'bun') {
-    const bunGlobal = (globalThis as { Bun?: BunServeNamespace }).Bun;
+    const bunGlobal = getBunGlobal();
     if (!bunGlobal) {
       throw new Error('Bun global not found despite detecting the Bun runtime.');
     }
-    const server = bunGlobal.serve({
-      port: options.port,
-      ...(options.host !== undefined ? { hostname: options.host } : {}),
-      maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
-      fetch: options.fetch,
-    });
-    options.logger.info(
-      `${options.label ?? 'HTTP interactions server'} listening on port ${options.port}`,
-    );
-    return { stop: () => server.stop() };
+    try {
+      const server = bunGlobal.serve({
+        port: options.port,
+        ...(options.host !== undefined ? { hostname: options.host } : {}),
+        maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
+        fetch: options.fetch,
+      });
+      options.logger.info(
+        `${options.label ?? 'HTTP interactions server'} listening on port ${options.port}`,
+      );
+      return { stop: () => server.stop() };
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      options.logger.error(
+        `${options.label ?? 'HTTP interactions server'} could not listen on port ${options.port}`,
+        { error: err },
+      );
+      process.exitCode = 1;
+      options.onListenError?.(err);
+      throw err;
+    }
   }
 
   if (runtime === 'deno') {
-    const denoGlobal = (globalThis as { Deno?: DenoServeNamespace }).Deno;
+    const denoGlobal = getDenoGlobal();
     if (!denoGlobal) {
       throw new Error('Deno global not found despite detecting the Deno runtime.');
     }
-    const server = denoGlobal.serve(
-      { port: options.port, ...(options.host !== undefined ? { hostname: options.host } : {}) },
-      options.fetch,
-    );
-    options.logger.info(
-      `${options.label ?? 'HTTP interactions server'} listening on port ${options.port}`,
-    );
-    return { stop: () => void server.shutdown() };
+    try {
+      const server = denoGlobal.serve(
+        { port: options.port, ...(options.host !== undefined ? { hostname: options.host } : {}) },
+        options.fetch,
+      );
+      options.logger.info(
+        `${options.label ?? 'HTTP interactions server'} listening on port ${options.port}`,
+      );
+      return { stop: () => void server.shutdown() };
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      options.logger.error(
+        `${options.label ?? 'HTTP interactions server'} could not listen on port ${options.port}`,
+        { error: err },
+      );
+      process.exitCode = 1;
+      options.onListenError?.(err);
+      throw err;
+    }
   }
 
   return createNodeInteractionsServer(options);

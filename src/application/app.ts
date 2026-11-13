@@ -39,9 +39,9 @@ import {
 } from '../discord/modals/router.js';
 import { normalizeError } from '../errors/normalize-error.js';
 import { createHealthHandler, type HealthConfig } from '../health/handler.js';
-import type { I18nResolver } from '../i18n/types.js';
+import type { I18nResolver, LocalizationResolver } from '../localization/resolver.js';
 import { createLogger, type Logger } from '../logging/logger.js';
-import type { ErrorReporter } from '../observability/types.js';
+import type { ErrorReporter } from '../observability/report-error.js';
 import { type InteractionsServer, startInteractionsServer } from '../transport/serve.js';
 import {
   assertIntervalMs,
@@ -228,7 +228,12 @@ export interface CreateCirceOptions<Config extends CirceCredentials> {
   onContextMenuCommandError?: ContextMenuCommandErrorHandler;
   /** Runs `before`/`after` around every command, component, modal, and context menu interaction — a bot's `middleware.ts`, or passed directly. */
   middleware?: MiddlewareModule;
-  /** Resolves `ctx.t(key, params)` across every command, component, modal, and context menu interaction — a bot's `i18n.ts`, or passed directly. Defaults to a resolver that returns keys verbatim, untranslated. */
+  /** Resolves `ctx.t(key, params)` across every command, component, modal, and context menu interaction — a bot's `localization.ts` (or `i18n.ts`), or passed directly. Defaults to a resolver that returns keys verbatim, untranslated. */
+  localization?: LocalizationResolver;
+  /**
+   * Resolves `ctx.t(key, params)` across interactions.
+   * @deprecated Use `localization` instead.
+   */
   i18n?: I18nResolver;
   /** Called for every error any router's boundary — or the event dispatcher — catches, decoupled from user-facing replies. For external reporting: OpenTelemetry, Sentry, metrics. */
   onError?: ErrorReporter;
@@ -566,9 +571,10 @@ export function createCirce<Config extends CirceCredentials>(
           }
         });
         attachEvents(client, eventRegistry, logger.child({ component: 'events' }), options.onError);
+        const localizationResolver = options.localization ?? options.i18n;
         const shared = {
           middleware: options.middleware,
-          i18n: options.i18n,
+          i18n: localizationResolver,
           onError: options.onError,
         };
         attachCommandRouter(client, {
@@ -594,7 +600,7 @@ export function createCirce<Config extends CirceCredentials>(
         attachAutocompleteRouter(client, {
           registry: commandRegistry,
           logger: logger.child({ component: 'commands' }),
-          ...omitUndefined({ i18n: options.i18n }),
+          ...omitUndefined({ i18n: localizationResolver }),
         });
         attachModalRouter(client, {
           registry: modalRegistry,

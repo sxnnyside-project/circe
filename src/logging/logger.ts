@@ -1,43 +1,133 @@
 import { getCorrelationId } from './context.js';
 
+/**
+ * Standard log severity levels.
+ *
+ * @public
+ */
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
+/**
+ * Execution environments controlling formatting and defaults.
+ *
+ * @public
+ */
 export type LogEnvironment = 'development' | 'staging' | 'production';
 
+/**
+ * Structured key-value metadata attached to a log entry.
+ *
+ * @public
+ */
 export type LogMetadata = Record<string, unknown>;
 
+/**
+ * Fully resolved log entry passed to a `LogSink`.
+ *
+ * @public
+ */
 export interface LogEntry {
+  /** Log severity level. */
   level: LogLevel;
+  /** Human-readable log message. */
   message: string;
+  /** ISO-8601 timestamp string when the log entry was produced. */
   timestamp: string;
+  /** Structured contextual metadata dictionary. */
   metadata: LogMetadata;
+  /** Correlation ID captured automatically from AsyncLocalStorage, if present. */
   correlationId: string | undefined;
 }
 
-export interface Logger {
-  debug(message: string, metadata?: LogMetadata): void;
-  info(message: string, metadata?: LogMetadata): void;
-  warn(message: string, metadata?: LogMetadata): void;
-  error(message: string, metadata?: LogMetadata): void;
-  /** Returns a new logger that merges `metadata` into every entry it writes. */
-  child(metadata: LogMetadata): Logger;
-}
-
+/**
+ * Sink function that receives formatted log entries.
+ *
+ * @param entry - Resolved log entry object.
+ * @public
+ */
 export type LogSink = (entry: LogEntry) => void;
 
+/**
+ * Configuration options for creating a `Logger`.
+ *
+ * @public
+ */
 export interface LoggerOptions {
-  /** Minimum level written. Defaults to "debug" in development, "info" otherwise. */
-  level?: LogLevel;
-  /** Controls output formatting: pretty text in development, structured JSON otherwise. */
-  environment?: LogEnvironment;
-  /** Base metadata merged into every entry (e.g. a component/module name). */
-  metadata?: LogMetadata;
   /**
-   * Where entries are written. Defaults to stdout (JSON) / a formatted line
-   * on process.stdout, chosen by `environment`. Overriding this is how a bot
-   * plugs in its own transport later without Circe needing to know about it.
+   * Minimum severity level written.
+   *
+   * @defaultValue `"debug"` in development, `"info"` in production/staging.
+   */
+  level?: LogLevel;
+
+  /**
+   * Controls output formatting: pretty human-readable text in development, structured JSON otherwise.
+   *
+   * @defaultValue `"development"`
+   */
+  environment?: LogEnvironment;
+
+  /**
+   * Base metadata merged into every entry (e.g. a component/module name).
+   *
+   * @defaultValue `{}`
+   */
+  metadata?: LogMetadata;
+
+  /**
+   * Where entries are written. Defaults to stdout (JSON) or formatted lines on stderr/stdout.
+   * Overriding this is how applications route logs to custom transports (Valkey, Datadog, Pino).
+   *
+   * @defaultValue Standard stream writer (stdout/stderr).
    */
   sink?: LogSink;
+}
+
+/**
+ * Structured logger interface used across Circe and consuming applications.
+ *
+ * @public
+ */
+export interface Logger {
+  /**
+   * Logs a message at `'debug'` level.
+   *
+   * @param message - Diagnostic message.
+   * @param metadata - Optional key-value context.
+   */
+  debug(message: string, metadata?: LogMetadata): void;
+
+  /**
+   * Logs a message at `'info'` level.
+   *
+   * @param message - Operational message.
+   * @param metadata - Optional key-value context.
+   */
+  info(message: string, metadata?: LogMetadata): void;
+
+  /**
+   * Logs a message at `'warn'` level.
+   *
+   * @param message - Warning message.
+   * @param metadata - Optional key-value context.
+   */
+  warn(message: string, metadata?: LogMetadata): void;
+
+  /**
+   * Logs a message at `'error'` level.
+   *
+   * @param message - Error message.
+   * @param metadata - Optional key-value context.
+   */
+  error(message: string, metadata?: LogMetadata): void;
+
+  /**
+   * Returns a new child logger that merges `metadata` into every entry it writes.
+   *
+   * @param metadata - Additional metadata to inherit in the child logger.
+   * @returns Child logger instance.
+   */
+  child(metadata: LogMetadata): Logger;
 }
 
 const LEVEL_WEIGHT: Record<LogLevel, number> = {
@@ -58,18 +148,16 @@ function errorToJson(error: Error): Record<string, unknown> {
 }
 
 /**
- * `JSON.stringify` throws on circular references and `BigInt`s. A logger's
- * job includes reporting failures, sometimes during shutdown — it must
- * never itself become the thing that throws. Falls back to a message-only
- * line rather than losing the entry (or crashing) when metadata can't be
- * serialized as-is. Errors are always expanded: a bare `{}` would drop the
- * very reason the line was written.
+ * Serializes values safely for structured logs.
+ *
+ * Design guarantees:
+ * 1. Fast-path handles BigInts (Discord Snowflakes) and Errors directly without throwing exceptions.
+ * 2. Slow-path catches circular references and annotates them with '[Circular]'.
+ * 3. Ultimate fallback guarantees the logger NEVER throws, even with throwing getters or broken Proxies.
  */
 function safeStringify(value: unknown): string {
+  // Fast path: Handles BigInts (crucial for Discord Snowflakes) and Errors in 1 pass without throwing
   try {
-    return JSON.stringify(value, (_key, v: unknown) => (v instanceof Error ? errorToJson(v) : v));
-  } catch {
-    const seen = new WeakSet();
     return JSON.stringify(value, (_key, v: unknown) => {
       if (typeof v === 'bigint') {
         return v.toString();
@@ -77,14 +165,51 @@ function safeStringify(value: unknown): string {
       if (v instanceof Error) {
         return errorToJson(v);
       }
-      if (typeof v === 'object' && v !== null) {
-        if (seen.has(v)) {
-          return '[Circular]';
-        }
-        seen.add(v);
-      }
       return v;
     });
+  } catch {
+    // Slow path: handles circular references
+    try {
+      const seen = new WeakSet();
+      return JSON.stringify(value, (_key, v: unknown) => {
+        if (typeof v === 'bigint') {
+          return v.toString();
+        }
+        if (v instanceof Error) {
+          return errorToJson(v);
+        }
+        if (typeof v === 'object' && v !== null) {
+          if (seen.has(v)) {
+            return '[Circular]';
+          }
+          seen.add(v);
+        }
+        return v;
+      });
+    } catch {
+      // Ultimate fallback: never crash the logger if a getter throws or proxy fails
+      try {
+        return JSON.stringify({
+          error: '[SerializationFailed]',
+          fallback: String(value),
+        });
+      } catch {
+        return '{"error":"[SerializationFailed]"}';
+      }
+    }
+  }
+}
+
+function writeToStream(isError: boolean, line: string): void {
+  const stream =
+    typeof process !== 'undefined' ? (isError ? process.stderr : process.stdout) : undefined;
+
+  if (stream?.write) {
+    stream.write(line);
+  } else if (isError) {
+    console.error(line.trimEnd());
+  } else {
+    console.log(line.trimEnd());
   }
 }
 
@@ -95,16 +220,14 @@ function defaultSink(environment: LogEnvironment): LogSink {
         Object.keys(entry.metadata).length > 0 ? ` ${safeStringify(entry.metadata)}` : '';
       const correlation = entry.correlationId ? ` [${entry.correlationId}]` : '';
       const line = `${entry.timestamp} ${entry.level.toUpperCase().padEnd(5)}${correlation} ${entry.message}${meta}\n`;
-      const stream =
-        entry.level === 'error' || entry.level === 'warn' ? process.stderr : process.stdout;
-      stream.write(line);
+      const isError = entry.level === 'error' || entry.level === 'warn';
+      writeToStream(isError, line);
     };
   }
 
   return (entry) => {
-    const stream =
-      entry.level === 'error' || entry.level === 'warn' ? process.stderr : process.stdout;
-    stream.write(`${safeStringify(entry)}\n`);
+    const isError = entry.level === 'error' || entry.level === 'warn';
+    writeToStream(isError, `${safeStringify(entry)}\n`);
   };
 }
 
@@ -138,7 +261,30 @@ function createLoggerInternal(
   };
 }
 
-/** Creates a new structured logger. Intentionally thin — no transports, no aggregation. */
+/**
+ * Creates a new structured logger. Intentionally thin — zero heavy external transports, no internal aggregation.
+ *
+ * @remarks
+ * Features:
+ * - Automatic correlation ID extraction from `AsyncLocalStorage`.
+ * - Cycle-safe and BigInt-safe (Discord snowflake) JSON serialization.
+ * - Pretty human-readable output in `'development'` mode, NDJSON in `'production'` and `'staging'`.
+ *
+ * @example
+ * ```ts
+ * const logger = createLogger({
+ *   environment: 'production',
+ *   level: 'info',
+ *   metadata: { service: 'bot' },
+ * });
+ *
+ * logger.info('Bot initialized', { shardId: 0 });
+ * ```
+ *
+ * @param options - Logger configuration options.
+ * @returns Configured structured `Logger` instance.
+ * @public
+ */
 export function createLogger(options: LoggerOptions = {}): Logger {
   const environment = options.environment ?? 'development';
   const level = options.level ?? (environment === 'development' ? 'debug' : 'info');

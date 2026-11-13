@@ -9,7 +9,7 @@ import type {
   SlashCommandSubcommandsOnlyBuilder,
   User,
 } from 'discord.js';
-import type { Translator } from '../../i18n/translator.js';
+import type { Translator } from '../../localization/resolver.js';
 import type { Logger } from '../../logging/logger.js';
 
 /**

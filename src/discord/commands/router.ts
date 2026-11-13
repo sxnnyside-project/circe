@@ -8,13 +8,15 @@ import {
 import type { MiddlewareModule } from '../../application/middleware.js';
 import { runWithMiddleware } from '../../application/middleware.js';
 import { normalizeError } from '../../errors/normalize-error.js';
-import { IdentityI18nResolver } from '../../i18n/identity-resolver.js';
-import { createTranslator, i18nContextOf } from '../../i18n/translator.js';
-import type { I18nResolver } from '../../i18n/types.js';
+import {
+  createTranslator,
+  IdentityLocalizationResolver,
+  type LocalizationResolver,
+  localizationContextOf,
+} from '../../localization/resolver.js';
 import { getCorrelationId, withCorrelationId } from '../../logging/context.js';
 import type { Logger } from '../../logging/logger.js';
-import { reportError } from '../../observability/report-error.js';
-import type { ErrorReporter } from '../../observability/types.js';
+import { type ErrorReporter, reportError } from '../../observability/report-error.js';
 import { safeEphemeralReply } from '../safe-respond.js';
 import { CommandError } from './errors.js';
 import type { CommandRegistry } from './registry.js';
@@ -55,12 +57,12 @@ export interface CommandRouterOptions {
   onCommandError?: CommandErrorHandler;
   middleware?: MiddlewareModule;
   /** Defaults to a resolver that returns every key verbatim, untranslated. */
-  i18n?: I18nResolver;
+  i18n?: LocalizationResolver;
   /** Called for every error this router's boundary catches, decoupled from the user-facing reply — for external reporting (OpenTelemetry, Sentry, metrics). */
   onError?: ErrorReporter;
 }
 
-const defaultI18nResolver = new IdentityI18nResolver();
+const defaultLocalizationResolver = new IdentityLocalizationResolver();
 
 async function defaultOnUnknownCommand(ctx: CommandContext): Promise<void> {
   ctx.logger.warn('Received interaction for an unregistered command', {
@@ -105,9 +107,9 @@ export async function handleCommandInteraction(
       logger,
       correlationId,
       t: createTranslator(
-        options.i18n ?? defaultI18nResolver,
+        options.i18n ?? defaultLocalizationResolver,
         interaction.locale,
-        i18nContextOf(interaction),
+        localizationContextOf(interaction),
       ),
     };
 
@@ -151,7 +153,15 @@ export async function handleCommandInteraction(
       await reportError(
         options.onError,
         commandError,
-        { kind: 'command', name: interaction.commandName, correlationId },
+        {
+          kind: 'command',
+          name: interaction.commandName,
+          correlationId,
+          timestamp: new Date().toISOString(),
+          guildId: interaction.guildId ?? undefined,
+          channelId: interaction.channelId ?? undefined,
+          userId: interaction.user.id,
+        },
         logger,
       );
       await (options.onCommandError ?? defaultOnCommandError)(ctx, commandError);

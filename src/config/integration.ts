@@ -1,10 +1,21 @@
 import type { IntervalOptions, IntervalTask } from '../application/app.js';
 import { assertIntervalMs, type LifecycleHook, type ReadyHook } from '../application/lifecycle.js';
 import { CirceError } from '../errors/circe-error.js';
+import type { HealthCheck } from '../health/handler.js';
 
-/** Raised when an integration's `setup()` throws — always attributed to that integration's `name`. */
+/**
+ * Raised when an integration's `setup()` throws — always attributed to that integration's `name`.
+ *
+ * @see {@link CirceError}
+ * @public
+ */
 export class IntegrationError extends CirceError {}
 
+/**
+ * Supported categories that integrations can contribute scan roots to.
+ *
+ * @public
+ */
 export type ScanCategory =
   | 'commands'
   | 'command-groups'
@@ -13,41 +24,112 @@ export type ScanCategory =
   | 'components'
   | 'modals';
 
+/**
+ * Execution context passed to an integration's `setup()` function.
+ * Enables contributing additional scan roots, lifecycle hooks, health checks, and recurring tasks.
+ *
+ * @public
+ */
 export interface CirceIntegrationContext {
-  /** Contributes an additional directory to scan for `category`, alongside `scanRoot`. */
+  /**
+   * Contributes an additional directory to scan for `category`, alongside `scanRoot`.
+   *
+   * @param category - Category to register scan root for.
+   * @param path - Absolute or relative path to the directory.
+   */
   addScanRoot(category: ScanCategory, path: string): void;
-  /** Same ordering guarantees as the programmatic `onStart`: runs before login and command registration. */
+
+  /**
+   * Registers a named readiness health check (e.g. database connectivity probe) for `/ready`.
+   *
+   * @param name - Unique health probe identifier.
+   * @param check - Callback returning healthy status or throwing an error.
+   */
+  addHealthCheck(name: string, check: HealthCheck): void;
+
+  /**
+   * Runs before login and command registration.
+   *
+   * @param hook - Async or sync lifecycle hook callback.
+   */
   onStart(hook: LifecycleHook): void;
-  /** Same ordering guarantees as the programmatic `onStop`: runs after the client has been destroyed. */
+
+  /**
+   * Runs after the client has been destroyed.
+   *
+   * @param hook - Async or sync lifecycle hook callback.
+   */
   onStop(hook: LifecycleHook): void;
+
   /**
    * Runs once the gateway is ready, with the logged-in `Client` — the place
    * to start anything that needs a live client, since `setup()` and
-   * `onStart` run before one exists. Not fired under the HTTP-only transport.
+   * `onStart` run before one exists. Not fired under HTTP-only transport.
+   *
+   * @param hook - Ready hook callback accepting Discord Client.
    */
   onReady(hook: ReadyHook): void;
-  /** Runs `task` on an interval once the gateway is ready; stopped automatically on shutdown. See `CirceApp.every`. */
+
+  /**
+   * Runs `task` on an interval once the gateway is ready; stopped automatically on shutdown.
+   *
+   * @param intervalMs - Interval period in milliseconds. Must be a positive safe integer.
+   * @param task - Periodic task callback receiving Discord Client.
+   * @param options - Additional interval options (e.g. `runImmediately`).
+   */
   every(intervalMs: number, task: IntervalTask, options?: IntervalOptions): void;
 }
 
+/**
+ * Extension module contract declared in `circe.config.ts`.
+ *
+ * @example
+ * ```ts
+ * export const myIntegration = defineIntegration({
+ *   name: 'my-plugin',
+ *   setup(ctx) {
+ *     ctx.addHealthCheck('db', async () => checkDb());
+ *   },
+ * });
+ * ```
+ *
+ * @public
+ */
 export interface CirceIntegration {
   readonly name: string;
   setup(context: CirceIntegrationContext): void | Promise<void>;
 }
 
-/** Identity helper — same purpose as `defineCommand`/`defineCirceConfig`. */
+/**
+ * Identity helper for declaring an integration module.
+ *
+ * @param definition - Integration configuration containing name and setup function.
+ * @returns The typed integration definition.
+ * @public
+ */
 export function defineIntegration(definition: CirceIntegration): CirceIntegration {
   return definition;
 }
 
+/**
+ * Normalized collection of all resources contributed by active integrations.
+ *
+ * @public
+ */
 export interface ResolvedIntegrations {
   readonly scanRoots: Readonly<Record<ScanCategory, readonly string[]>>;
+  readonly healthChecks: Readonly<Record<string, HealthCheck>>;
   readonly onStartHooks: readonly LifecycleHook[];
   readonly onStopHooks: readonly LifecycleHook[];
   readonly onReadyHooks: readonly ReadyHook[];
   readonly intervals: readonly IntervalRegistration[];
 }
 
+/**
+ * Registered recurring background task.
+ *
+ * @public
+ */
 export interface IntervalRegistration {
   readonly intervalMs: number;
   readonly task: IntervalTask;
@@ -55,11 +137,13 @@ export interface IntervalRegistration {
 }
 
 /**
- * Runs every integration's `setup()` once, collecting the narrow set of
- * things it's allowed to contribute — extra scan roots and lifecycle
- * hooks — rather than handing it the application directly. A `setup` that
- * throws is reported with that integration's `name` attached, never as an
- * unattributed startup crash.
+ * Runs every integration's `setup()` once, collecting scan roots, health checks,
+ * lifecycle hooks, and intervals. An integration that throws is attributed by name.
+ *
+ * @param integrations - Array of integrations to execute.
+ * @returns Consolidated map of scan roots, hooks, health checks, and intervals.
+ * @throws {@link IntegrationError} When an integration's `setup()` throws an error.
+ * @public
  */
 export async function resolveIntegrations(
   integrations: readonly CirceIntegration[] = [],
@@ -72,6 +156,7 @@ export async function resolveIntegrations(
     components: [],
     modals: [],
   };
+  const healthChecks: Record<string, HealthCheck> = {};
   const onStartHooks: LifecycleHook[] = [];
   const onStopHooks: LifecycleHook[] = [];
   const onReadyHooks: ReadyHook[] = [];
@@ -81,6 +166,9 @@ export async function resolveIntegrations(
     const context: CirceIntegrationContext = {
       addScanRoot: (category, path) => {
         scanRoots[category].push(path);
+      },
+      addHealthCheck: (name, check) => {
+        healthChecks[name] = check;
       },
       onStart: (hook) => {
         onStartHooks.push(hook);
@@ -107,5 +195,5 @@ export async function resolveIntegrations(
     }
   }
 
-  return { scanRoots, onStartHooks, onStopHooks, onReadyHooks, intervals };
+  return { scanRoots, healthChecks, onStartHooks, onStopHooks, onReadyHooks, intervals };
 }

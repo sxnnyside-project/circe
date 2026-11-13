@@ -15,6 +15,7 @@ describe('resolveIntegrations', () => {
     expect(resolved.scanRoots.events).toEqual([]);
     expect(resolved.scanRoots.components).toEqual([]);
     expect(resolved.scanRoots.modals).toEqual([]);
+    expect(resolved.healthChecks).toEqual({});
     expect(resolved.onStartHooks).toEqual([]);
     expect(resolved.onStopHooks).toEqual([]);
     expect(resolved.onReadyHooks).toEqual([]);
@@ -167,5 +168,18 @@ describe('resolveIntegrations', () => {
     });
 
     await expect(resolveIntegrations([integration])).rejects.toThrow(/bad-interval/);
+  });
+
+  test('collects health checks contributed by integrations', async () => {
+    const dbCheck = () => true;
+    const integration = defineIntegration({
+      name: 'database',
+      setup(ctx) {
+        ctx.addHealthCheck('postgres', dbCheck);
+      },
+    });
+
+    const resolved = await resolveIntegrations([integration]);
+    expect(resolved.healthChecks).toEqual({ postgres: dbCheck });
   });
 });

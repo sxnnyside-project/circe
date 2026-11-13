@@ -9,6 +9,51 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Universal SQLite persistence subpath (`@sxnnyside/circe/sqlite`) exposing `SqliteCooldownStore`:
+  - Supports native `bun:sqlite` under Bun and standard library `node:sqlite` (`DatabaseSync`) under Node 22.5+, Node 24+, and Deno 2+ with zero external npm dependencies.
+  - Automatically enables WAL mode (`PRAGMA journal_mode = WAL`) on disk databases.
+  - Precompiles prepared statements once at initialization for high throughput.
+  - Implements `Symbol.dispose` for ECMAScript Explicit Resource Management (`using store = new SqliteCooldownStore()`).
+- Modern localization subsystem under `src/localization/`:
+  - `DiscordLocale` union supporting all 34 Discord official locales with string dialect fallback.
+  - `LocalizationContext`, `LocalizationResolver`, `defineLocalizationResolver`, `localizationContextOf`, and `createTranslator`.
+  - `@experimental` `resolveInteractionLocale()` with configurable user vs. guild priority and fallback chains.
+  - `@experimental` zero-dependency token interpolator `interpolate()`.
+  - Added `nameLocalizations` and `descriptionLocalizations` support in `_group.ts` for hierarchical command groups and subcommands.
+- Runtime and platform introspection:
+  - Exported `detectRuntime()` and `Runtime` (`'bun' | 'node' | 'deno'`) in `@sxnnyside/circe` for zero-overhead global introspection.
+  - Exported `createWatcher()` and `Watcher` interface.
+- Decoupled environment configuration:
+  - `src/config/env-config.ts` (`defineEnvConfig`, `EnvConfig`, `SafeParseSchema`) allowing any validator implementing `safeParse` (Zod, Valibot, ArkType, Standard Schema v1).
+  - TypeScript discriminated union on `CirceConfigFile` enforcing `http: { publicKey }` at compile time when `transport` is `'http'` or `'hybrid'`.
+- Extensible integration health probes:
+  - Added `ctx.addHealthCheck(name, check)` to `CirceIntegrationContext`, allowing extensions to register named `/ready` checks without manual wiring.
+- Health probe type ergonomics:
+  - Exported `HealthProbeStatus` and `HealthProbeResponse` describing `/health` and `/ready` structured responses.
+- Framework-wide TSDoc parity:
+  - Comprehensive TSDoc documentation (`@remarks`, `@param`, `@returns`, `@example`, `@defaultValue`, `@throws`, `@see`, `@public`, `@internal`, `@experimental`, `@deprecated`) normalized across `sqlite`, `transport`, `runtime`, `observability`, `logging`, `localization`, `health`, `config`, and `errors`.
+- Root entry point symmetry:
+  - Mapped root `src/` to strictly 5 canonical entry points matching `package.json#exports` (`index.ts`, `testing/index.ts`, `cli/index.ts`, `sqlite.ts`, `bun-sqlite.ts`).
+
+### Changed
+
+- Consolidated legacy `i18n` into `src/localization/resolver.ts`, exposing backward-compatible proxies (`I18nResolver`, `I18nContext`, `IdentityI18nResolver`, `defineI18nResolver`, `i18nContextOf`) marked as `@deprecated`.
+- The CLI scanner now looks for `localization.ts` first at the scan root, with seamless fallback to `i18n.ts`.
+- `src/config/config.ts` re-exports from `./env-config.js` with `@deprecated`.
+- `src/bun-sqlite.ts` and `src/discord/guards/cooldown/bun-sqlite-store.ts` are backward-compatible proxies pointing to universal `SqliteCooldownStore` with driver `'bun'` by default.
+- Consolidated observability types into `src/observability/report-error.ts` to reduce file fragmentation.
+
+### Fixed
+
+- `CirceError.toJSON()` uses a `WeakSet<object>` to prevent stack overflow on circular error causes (`[CircularCause]`).
+- `CirceError.toJSON()` handles native `JSON.stringify` parameter passing (`key: string` as first argument).
+- `CirceError.toJSON()` recursively preserves child errors inside `AggregateError.errors`.
+- `CirceError.toJSON()` and metadata serialization safely coerce Discord snowflake BigInt values to string, preventing `TypeError: Do not know how to serialize a BigInt`.
+- `normalizeError()` annotates `originalName: value.name` in metadata when wrapping native errors (`TypeError`, `SyntaxError`), preventing loss of error class in APM/observability tools.
+- Deno file watcher descriptor leak: `createWatcher().stop()` now explicitly invokes `watcher.close()` under Deno.
+
 ## [1.1.0] — 2026-10-14
 
 ### Added

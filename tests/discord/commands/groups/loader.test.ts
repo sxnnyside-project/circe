@@ -266,4 +266,28 @@ describe('loadCommandGroups', () => {
       },
     );
   });
+
+  test('applies nameLocalizations and descriptionLocalizations declared in _group.ts', async () => {
+    const localizedGroup = `
+export default {
+  name: "settings",
+  description: "Configure settings",
+  nameLocalizations: { "es-ES": "ajustes" },
+  descriptionLocalizations: { "es-ES": "Configurar ajustes" },
+};
+`;
+    await withTempDir(
+      { 'settings/_group.ts': localizedGroup, 'settings/view.ts': subcommandModule('view') },
+      async (dir) => {
+        const registry = new CommandRegistry();
+        await loadCommandGroups(dir, { registry, logger });
+        const command = registry.get('settings');
+
+        expect(command).toBeDefined();
+        const json = command?.builder.toJSON();
+        expect(json?.name_localizations).toEqual({ 'es-ES': 'ajustes' });
+        expect(json?.description_localizations).toEqual({ 'es-ES': 'Configurar ajustes' });
+      },
+    );
+  });
 });

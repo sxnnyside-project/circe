@@ -45,6 +45,11 @@
       "import": "./dist/testing/index.js",
       "default": "./dist/testing/index.js"
     },
+    "./sqlite": {
+      "types": "./dist/sqlite.d.ts",
+      "import": "./dist/sqlite.js",
+      "default": "./dist/sqlite.js"
+    },
     "./bun-sqlite": {
       "types": "./dist/bun-sqlite.d.ts",
       "import": "./dist/bun-sqlite.js",
@@ -62,7 +67,7 @@
   ],
   "scripts": {
     "dev": "bun run --watch src/index.ts",
-    "build": "rm -rf dist && bun build ./src/index.ts ./src/testing/index.ts ./src/cli/index.ts ./src/bun-sqlite.ts --outdir ./dist --target node --format esm --splitting --external discord.js --sourcemap=external --chunk-naming 'chunks/[name]-[hash].[ext]' && tsc -p tsconfig.build.json --emitDeclarationOnly && chmod +x ./dist/cli/index.js",
+    "build": "rm -rf dist && bun build ./src/index.ts ./src/testing/index.ts ./src/cli/index.ts ./src/bun-sqlite.ts ./src/sqlite.ts --outdir ./dist --target node --format esm --splitting --external discord.js --sourcemap=external --chunk-naming 'chunks/[name]-[hash].[ext]' && tsc -p tsconfig.build.json --emitDeclarationOnly && chmod +x ./dist/cli/index.js",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:coverage": "bun scripts/coverage.ts",

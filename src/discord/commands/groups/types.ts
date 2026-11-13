@@ -1,4 +1,4 @@
-import type { SlashCommandSubcommandBuilder } from 'discord.js';
+import type { LocalizationMap, SlashCommandSubcommandBuilder } from 'discord.js';
 import type { CommandContext, Guard } from '../types.js';
 
 export interface CommandGroupDefinition<
@@ -6,6 +6,10 @@ export interface CommandGroupDefinition<
 > {
   readonly name: string;
   readonly description: string;
+  /** Localized names for the command group in Discord's UI. */
+  readonly nameLocalizations?: LocalizationMap;
+  /** Localized descriptions for the command group in Discord's UI. */
+  readonly descriptionLocalizations?: LocalizationMap;
   /** Run before any child subcommand's own guards — a precondition for the whole group, not a substitute for a leaf's specific ones. */
   readonly guards?: readonly Guard[];
   readonly metadata?: Metadata;

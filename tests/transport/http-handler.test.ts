@@ -43,7 +43,7 @@ async function signedRequest(
 const logger = createLogger({ sink: () => {} });
 
 describe('createInteractionsHandler', () => {
-  test('rejects a non-POST request with 405', async () => {
+  test('rejects a non-POST request with 405 and Allow header', async () => {
     const { publicKey } = await generateKeyPair();
     const client = new Client({ intents: [] });
     const handler = createInteractionsHandler({ client, publicKey, logger });
@@ -52,6 +52,7 @@ describe('createInteractionsHandler', () => {
       new Request('https://bot.example/interactions', { method: 'GET' }),
     );
     expect(response.status).toBe(405);
+    expect(response.headers.get('allow')).toBe('POST');
     client.destroy();
   });
 
@@ -105,6 +106,32 @@ describe('createInteractionsHandler', () => {
     const response = await handler(request);
 
     expect(response.status).toBe(400);
+    client.destroy();
+  });
+
+  test('rejects a signed primitive JSON payload (null, boolean, number, string) with 400', async () => {
+    const { keyPair, publicKey } = await generateKeyPair();
+    const client = new Client({ intents: [] });
+    const handler = createInteractionsHandler({ client, publicKey, logger });
+
+    for (const primitive of ['null', 'true', '123', '"a string"']) {
+      const request = await signedRequest(keyPair, primitive);
+      const response = await handler(request);
+      expect(response.status).toBe(400);
+      expect(await response.text()).toBe('Invalid interaction payload');
+    }
+    client.destroy();
+  });
+
+  test('rejects a signed JSON object without numeric type with 400', async () => {
+    const { keyPair, publicKey } = await generateKeyPair();
+    const client = new Client({ intents: [] });
+    const handler = createInteractionsHandler({ client, publicKey, logger });
+
+    const request = await signedRequest(keyPair, JSON.stringify({ notType: 'foo' }));
+    const response = await handler(request);
+    expect(response.status).toBe(400);
+    expect(await response.text()).toBe('Invalid interaction payload');
     client.destroy();
   });
 

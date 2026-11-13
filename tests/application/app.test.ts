@@ -425,7 +425,7 @@ describe('createCirce', () => {
     expect(reported).toHaveLength(1);
     expect(
       (reported[0] as { context: { kind: string; name: string; correlationId: string } }).context,
-    ).toEqual({
+    ).toMatchObject({
       kind: 'command',
       name: 'broken',
       correlationId: expect.any(String),

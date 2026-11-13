@@ -1,7 +1,13 @@
 /**
- * Bun-only subpath (`@sxnnyside/circe/bun-sqlite`). Never imported by the
- * main entry point — `bun:sqlite` doesn't exist outside Bun, and importing
- * it eagerly from `src/index.ts` would break the package for every Node
- * and Deno consumer the moment they imported anything from it at all.
+ * Bun-only subpath (`@sxnnyside/circe/bun-sqlite`).
+ *
+ * @deprecated Use `@sxnnyside/circe/sqlite` instead, which supports both `bun:sqlite` and `node:sqlite`.
+ * @see {@link SqliteCooldownStore}
+ * @packageDocumentation
  */
-export { BunSqliteCooldownStore } from './discord/guards/cooldown/bun-sqlite-store.js';
+export {
+  BunSqliteCooldownStore,
+  SqliteCooldownStore,
+  type SqliteCooldownStoreOptions,
+  type SqliteDriverType,
+} from './sqlite/cooldown-store.js';

@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { createTranslator, i18nContextOf } from '../../src/i18n/translator.js';
-import type { I18nResolver } from '../../src/i18n/types.js';
+import {
+  createTranslator,
+  type I18nResolver,
+  i18nContextOf,
+} from '../../src/localization/resolver.js';
 
 class RecordingResolver implements I18nResolver {
   calls: { key: string; locale: string; params?: Record<string, unknown> }[] = [];

@@ -2,14 +2,33 @@ import { type Client, InteractionResponseType, InteractionType } from 'discord.j
 import type { Logger } from '../logging/logger.js';
 import { dispatchInteraction } from './interaction-bridge.js';
 import { MAX_REQUEST_BODY_BYTES } from './limits.js';
-import { verifyDiscordSignature } from './verify-signature.js';
+import {
+  DISCORD_SIGNATURE_HEADER,
+  DISCORD_TIMESTAMP_HEADER,
+  verifyDiscordSignature,
+} from './verify-signature.js';
 
+/**
+ * Options for configuring the Discord Interactions HTTP request handler.
+ *
+ * @public
+ */
 export interface InteractionsHttpHandlerOptions {
+  /** Discord.js Client instance through which interactions are dispatched. */
   readonly client: Client;
-  /** Hex-encoded ed25519 public key from the Discord Developer Portal. */
+
+  /** Hex-encoded Ed25519 public key from the Discord Developer Portal. */
   readonly publicKey: string;
+
+  /** Logger for recording transport rejections and diagnostics. */
   readonly logger: Logger;
-  /** Largest accepted gap between a request's signed timestamp and now. Defaults to 300 seconds. */
+
+  /**
+   * Largest accepted gap in seconds between request timestamp and current system time.
+   * Protects against replay attacks.
+   *
+   * @defaultValue `300`
+   */
   readonly maxTimestampSkewSeconds?: number;
 }
 
@@ -46,15 +65,13 @@ async function readCappedBody(request: Request): Promise<string | undefined> {
   return new TextDecoder().decode(body);
 }
 
-const SIGNATURE_HEADER = 'x-signature-ed25519';
-const TIMESTAMP_HEADER = 'x-signature-timestamp';
-
 /**
  * A standard `(Request) => Promise<Response>` handler for Discord's HTTP
  * Interactions Endpoint URL — the same Fetch API contract `Bun.serve`,
  * Node 22+, and `Deno.serve` all accept, so this function is the entire
  * HTTP transport surface regardless of which runtime hosts it.
  *
+ * @remarks
  * Every non-`PING` interaction is fed into the normal `Client` event
  * pipeline via `dispatchInteraction` and acknowledged with `202`/no body —
  * Discord explicitly allows sending the real response later via the
@@ -62,17 +79,30 @@ const TIMESTAMP_HEADER = 'x-signature-timestamp';
  * already does inside Circe's existing routers. `PING` is the one
  * exception the endpoint-verification handshake requires: it must be
  * answered inline, in the original response body.
+ *
+ * @example
+ * ```ts
+ * const handler = createInteractionsHandler({
+ *   client,
+ *   publicKey: env.DISCORD_PUBLIC_KEY,
+ *   logger,
+ * });
+ * ```
+ *
+ * @param options - Interaction HTTP transport options.
+ * @returns Web Fetch API compatible async request handler.
+ * @public
  */
 export function createInteractionsHandler(
   options: InteractionsHttpHandlerOptions,
 ): (request: Request) => Promise<Response> {
   return async (request: Request): Promise<Response> => {
     if (request.method !== 'POST') {
-      return new Response(null, { status: 405 });
+      return new Response(null, { status: 405, headers: { Allow: 'POST' } });
     }
 
-    const signature = request.headers.get(SIGNATURE_HEADER);
-    const timestamp = request.headers.get(TIMESTAMP_HEADER);
+    const signature = request.headers.get(DISCORD_SIGNATURE_HEADER);
+    const timestamp = request.headers.get(DISCORD_TIMESTAMP_HEADER);
 
     // Before the body is buffered: an unsigned request costs nothing.
     if (!signature || !timestamp) {
@@ -104,18 +134,28 @@ export function createInteractionsHandler(
       return new Response('Invalid request signature', { status: 401 });
     }
 
-    let payload: { type: number };
+    let payload: unknown;
     try {
       payload = JSON.parse(body);
     } catch {
       return new Response('Invalid JSON body', { status: 400 });
     }
 
-    if (payload.type === InteractionType.Ping) {
+    if (
+      typeof payload !== 'object' ||
+      payload === null ||
+      typeof (payload as { type?: unknown }).type !== 'number'
+    ) {
+      return new Response('Invalid interaction payload', { status: 400 });
+    }
+
+    const interactionPayload = payload as { type: number };
+
+    if (interactionPayload.type === InteractionType.Ping) {
       return Response.json({ type: InteractionResponseType.Pong });
     }
 
-    dispatchInteraction(options.client, payload);
+    dispatchInteraction(options.client, interactionPayload);
     return new Response(null, { status: 202 });
   };
 }

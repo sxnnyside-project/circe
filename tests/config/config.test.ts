@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
-import { defineConfig } from '../../src/config/config.js';
+import { defineConfig, defineEnvConfig } from '../../src/config/env-config.js';
 import { ConfigError } from '../../src/config/errors.js';
 
 const schema = z.object({
@@ -90,5 +90,24 @@ describe('defineConfig', () => {
       // metadata (the generic bag) no longer also carries a copy of `issues`.
       expect(serialized.metadata.issues).toBeUndefined();
     }
+  });
+
+  test('supports non-Zod custom schema implementing safeParse', () => {
+    const customValidator = {
+      safeParse(data: unknown) {
+        const record = (data ?? {}) as Record<string, unknown>;
+        if (typeof record.API_KEY === 'string') {
+          return { success: true as const, data: { API_KEY: record.API_KEY } };
+        }
+        return {
+          success: false as const,
+          error: { issues: [{ path: ['API_KEY'], message: 'Missing API_KEY' }] },
+        };
+      },
+    };
+
+    const config = defineEnvConfig(customValidator);
+    expect(config.load({ API_KEY: 'secret' })).toEqual({ API_KEY: 'secret' });
+    expect(() => config.load({})).toThrow(ConfigError);
   });
 });

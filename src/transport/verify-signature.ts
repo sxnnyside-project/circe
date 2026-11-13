@@ -1,3 +1,19 @@
+/**
+ * Canonical request header name for Discord's Ed25519 signature.
+ * @public
+ */
+export const DISCORD_SIGNATURE_HEADER = 'x-signature-ed25519' as const;
+
+/**
+ * Canonical request header name for Discord's interaction timestamp.
+ * @public
+ */
+export const DISCORD_TIMESTAMP_HEADER = 'x-signature-timestamp' as const;
+
+/**
+ * Options for verifying a Discord Interactions Endpoint request.
+ * @public
+ */
 export interface VerifySignatureOptions {
   /** Hex-encoded ed25519 public key from the Discord Developer Portal. */
   readonly publicKey: string;
@@ -22,11 +38,29 @@ function hexToBytes(hex: string): Uint8Array<ArrayBuffer> | undefined {
 }
 
 /**
- * Verifies a Discord Interactions Endpoint request using ed25519 via the
+ * Verifies a Discord Interactions Endpoint request using Ed25519 via the
  * standard Web Crypto API (`crypto.subtle`) — native in Bun, Node 22+, and
- * Deno, no dependency like `tweetnacl` needed. Never throws: a malformed
- * header or body is a failed verification, not an exception, since this
- * runs on every inbound request to an HTTP-exposed endpoint.
+ * Deno, with zero external dependencies (no `tweetnacl` or native addons).
+ *
+ * @remarks
+ * Security guarantees:
+ * - Constant-time verification through native platform cryptography.
+ * - Never throws: invalid hex encoding, malformed keys, or corrupted payloads return `false`.
+ * - Requires exact raw request body bytes; re-serialized JSON cannot be verified.
+ *
+ * @example
+ * ```ts
+ * const isValid = await verifyDiscordSignature({
+ *   publicKey: env.DISCORD_PUBLIC_KEY,
+ *   signature: req.headers.get('x-signature-ed25519') ?? '',
+ *   timestamp: req.headers.get('x-signature-timestamp') ?? '',
+ *   body: rawBodyString,
+ * });
+ * ```
+ *
+ * @param options - Signature verification parameters.
+ * @returns Promise resolving to `true` if signature is cryptographically valid, `false` otherwise.
+ * @public
  */
 export async function verifyDiscordSignature(options: VerifySignatureOptions): Promise<boolean> {
   const publicKeyBytes = hexToBytes(options.publicKey);
