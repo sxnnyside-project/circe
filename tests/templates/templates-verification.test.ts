@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { prepareApp } from '../../src/application/prepare-app.js';
@@ -13,6 +13,13 @@ const originalEnv = { ...process.env };
 
 beforeEach(async () => {
   await mkdir(TEMPLATES_ROOT, { recursive: true });
+  // A Deno scaffold has no package.json, so its imports would resolve inside this repository's own
+  // package, whose `exports` point at `dist` (absent unless built). Its own scope sends them to the
+  // `@sxnnyside/circe` entry that tests/preload.ts links to `src`.
+  await writeFile(
+    path.join(TEMPLATES_ROOT, 'package.json'),
+    '{ "name": "circe-template-fixtures", "private": true, "type": "module" }\n',
+  );
   dir = await mkdtemp(path.join(TEMPLATES_ROOT, 'tpl-'));
   process.env.DISCORD_TOKEN = 'test-token-valid-sample-0123456789';
   process.env.DISCORD_CLIENT_ID = '123456789012345678';
