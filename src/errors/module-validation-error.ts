@@ -47,7 +47,7 @@ export interface ModuleValidationErrorOptions extends Omit<CirceErrorOptions, 'm
  */
 export class ModuleValidationError extends CirceError {
   readonly category: string;
-  readonly issues: readonly ModuleValidationIssue[];
+  readonly issues: ModuleValidationIssue[];
 
   /**
    * Creates a new `ModuleValidationError` instance.
@@ -58,7 +58,7 @@ export class ModuleValidationError extends CirceError {
   constructor(message: string, options: ModuleValidationErrorOptions) {
     super(message, { ...options, operational: true, metadata: { category: options.category } });
     this.category = options.category;
-    this.issues = options.issues;
+    this.issues = [...options.issues];
   }
 
   /**

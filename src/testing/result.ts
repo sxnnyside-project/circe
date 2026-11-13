@@ -15,11 +15,11 @@ import type { TestReply } from './interaction.js';
  */
 export interface TestExecutionResult {
   /** All standard replies recorded during the interaction lifecycle. */
-  readonly replies: readonly TestReply[];
+  readonly replies: TestReply[];
   /** All follow-up replies recorded during the interaction lifecycle. */
-  readonly followUps: readonly TestReply[];
+  readonly followUps: TestReply[];
   /** All structured log entries emitted by the interaction logger. */
-  readonly logs: readonly LogEntry[];
+  readonly logs: LogEntry[];
   /** All modal objects passed to `interaction.showModal()`. */
   readonly modals: readonly unknown[];
   /** The first reply recorded, or `undefined` if none was sent. */

@@ -11,7 +11,7 @@ import { createTestLogger } from './logger.js';
  */
 export interface TestEventResult {
   /** Structured log entries emitted during event execution. */
-  readonly logs: readonly LogEntry[];
+  readonly logs: LogEntry[];
   /**
    * Asserts whether a log entry at the specified log level was recorded.
    *

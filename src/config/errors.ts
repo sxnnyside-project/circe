@@ -41,7 +41,7 @@ export interface ConfigErrorOptions extends Omit<CirceErrorOptions, 'metadata'> 
  * @public
  */
 export class ConfigError extends CirceError {
-  readonly issues: readonly ConfigIssue[];
+  readonly issues: ConfigIssue[];
 
   /**
    * Creates a new `ConfigError` instance.
@@ -52,7 +52,7 @@ export class ConfigError extends CirceError {
   constructor(message: string, options: ConfigErrorOptions) {
     super(message, { ...options, operational: true });
     this.name = 'ConfigError';
-    this.issues = options.issues;
+    this.issues = [...options.issues];
   }
 
   /**

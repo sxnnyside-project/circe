@@ -863,6 +863,8 @@ describe('process handlers and shutdown', () => {
 
   async function withCleanProcess(fn: () => Promise<void>): Promise<void> {
     const previousExitCode = process.exitCode;
+    // Start from a clean slate: an earlier failing test must not leak its exit code into this one.
+    process.exitCode = 0;
     try {
       await fn();
     } finally {

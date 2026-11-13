@@ -47,7 +47,7 @@ export interface TestComponentOptions extends TestComponentInteractionOptions {
  */
 export interface TestComponentResult extends TestExecutionResult {
   /** Every `interaction.update()` call, in order. */
-  readonly updates: readonly TestReply[];
+  readonly updates: TestReply[];
   /** The first update payload, or `undefined` if none was sent. */
   readonly update: TestReply | undefined;
   /** Asserts whether an update matching the given criteria was emitted. */
