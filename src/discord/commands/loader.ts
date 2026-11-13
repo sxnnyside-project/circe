@@ -4,8 +4,15 @@ import { discoverModules } from '../module-loader.js';
 import type { CommandRegistry } from './registry.js';
 import type { CommandDefinition } from './types.js';
 
+/**
+ * Options accepted by {@link loadCommands}.
+ *
+ * @public
+ */
 export interface LoadCommandsOptions {
+  /** Target registry where validated commands will be stored. */
   registry: CommandRegistry;
+  /** Component logger for discovery and loading diagnostics. */
   logger: Logger;
 }
 
@@ -30,11 +37,17 @@ function validateCommandShape(value: unknown): string[] {
 }
 
 /**
- * Recursively discovers command modules under `directory` — category
- * subfolders included — imports each one, validates its default export,
- * and registers it. Every malformed or unimportable file in the directory
- * is collected into a single `ModuleValidationError` rather than stopping
- * at the first one, so fixing one issue doesn't just uncover the next.
+ * Recursively scans, imports, validates, and registers slash command modules from disk.
+ *
+ * @remarks
+ * Gathers all malformed shapes and unimportable modules into a single {@link ModuleValidationError}
+ * so all syntax and structure errors across the entire directory are reported together.
+ *
+ * @param directory - Directory path or `file://` URL containing command files.
+ * @param options - Registry target and logger.
+ * @throws {@link ModuleValidationError} If any scanned module fails shape validation or throws during import.
+ *
+ * @public
  */
 export async function loadCommands(
   directory: string | URL,

@@ -1,16 +1,36 @@
 import { createLogger, type LogEntry, type Logger } from '../logging/logger.js';
 
+/**
+ * In-memory test logger recording structured log entries.
+ *
+ * @public
+ */
 export interface TestLogger {
+  /** The test logger instance. */
   readonly logger: Logger;
-  /** Every entry written so far, in order. Mutated in place as the logger is used. */
+  /** In-memory log buffer containing every entry recorded in chronological order. */
   readonly entries: LogEntry[];
 }
 
 /**
- * A logger that records entries instead of writing them anywhere, for
- * asserting on what a command/event logged during a test. Avoids every
- * caller having to hand-build a `createLogger` with an array-collecting
- * `sink` themselves.
+ * Creates an in-memory logger that buffers log entries for test assertions.
+ *
+ * @remarks
+ * Avoids writing output to stdout or stderr during unit tests and enables inspection
+ * of structured log metadata and correlation IDs.
+ *
+ * @returns A {@link TestLogger} containing the logger and buffered `entries` array.
+ *
+ * @example
+ * ```typescript
+ * import { createTestLogger } from '@sxnnyside/circe/testing';
+ *
+ * const { logger, entries } = createTestLogger();
+ * logger.info('Task started', { taskId: 'abc' });
+ * expect(entries).toHaveLength(1);
+ * ```
+ *
+ * @public
  */
 export function createTestLogger(): TestLogger {
   const entries: LogEntry[] = [];

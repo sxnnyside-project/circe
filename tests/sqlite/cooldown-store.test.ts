@@ -75,6 +75,35 @@ describe('SqliteCooldownStore', () => {
     });
   });
 
+  describe('claim', () => {
+    for (const driver of ['bun', 'node'] as const) {
+      test(`${driver} driver: the first claim wins, a second sees the time left, an expired one is claimable again`, () => {
+        const store = new SqliteCooldownStore({ driver });
+
+        expect(store.claim('k', 5_000)).toBe(0);
+        expect(store.claim('k', 5_000)).toBeGreaterThan(4_000);
+
+        store.hit('old', -10);
+        expect(store.claim('old', 5_000)).toBe(0);
+        store.dispose();
+      });
+    }
+
+    test('two stores on one file cannot both claim the same key', () => {
+      const dir = mkdtempSync(path.join(tmpdir(), 'circe-claim-'));
+      const file = path.join(dir, 'cooldowns.sqlite');
+      const a = new SqliteCooldownStore({ path: file });
+      const b = new SqliteCooldownStore({ path: file });
+
+      const results = [a.claim('shared', 5_000), b.claim('shared', 5_000)];
+
+      expect(results.filter((remaining) => remaining === 0)).toHaveLength(1);
+      a.dispose();
+      b.dispose();
+      rmSync(dir, { recursive: true, force: true });
+    });
+  });
+
   describe('BunSqliteCooldownStore legacy alias', () => {
     test('instantiates and operates identical to SqliteCooldownStore', () => {
       const store = new BunSqliteCooldownStore();

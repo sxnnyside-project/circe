@@ -11,6 +11,14 @@ const schema = z.object({
 });
 
 describe('defineConfig', () => {
+  test('keeps the declared schema type, so its members stay reachable (compile-time check)', () => {
+    const schema = z.object({ DISCORD_TOKEN: z.string() });
+    const config = defineConfig(schema);
+
+    // `config.schema.shape` only type-checks while `schema` keeps its Zod type instead of `unknown`.
+    expect(config.schema.shape.DISCORD_TOKEN).toBe(schema.shape.DISCORD_TOKEN);
+  });
+
   test('returns a typed, parsed result for valid input', () => {
     const config = defineConfig(schema);
     const result = config.load({
@@ -109,5 +117,26 @@ describe('defineConfig', () => {
     const config = defineEnvConfig(customValidator);
     expect(config.load({ API_KEY: 'secret' })).toEqual({ API_KEY: 'secret' });
     expect(() => config.load({})).toThrow(ConfigError);
+  });
+
+  test('validates Zod 4 schemas with transforms and nested coercions', () => {
+    const zod4Schema = z.object({
+      DISCORD_TOKEN: z.string().trim().min(5),
+      SHARDS: z.coerce.number().default(1),
+      TAGS: z
+        .string()
+        .default('general,admin')
+        .transform((val) => val.split(',')),
+    });
+
+    const config = defineConfig(zod4Schema);
+    const parsed = config.load({
+      DISCORD_TOKEN: '  secret-token  ',
+      SHARDS: '4',
+    });
+
+    expect(parsed.DISCORD_TOKEN).toBe('secret-token');
+    expect(parsed.SHARDS).toBe(4);
+    expect(parsed.TAGS).toEqual(['general', 'admin']);
   });
 });

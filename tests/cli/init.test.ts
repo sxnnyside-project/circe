@@ -3,8 +3,9 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { prepareApp } from '../../src/application/prepare-app.js';
 import { detectPackageManager, renderInitResult, runInit } from '../../src/cli/init.js';
-import { prepareApp } from '../../src/cli/prepare-app.js';
+import { parseArgs } from '../../src/cli/interface.js';
 import { createLogger } from '../../src/logging/logger.js';
 
 let dir: string;
@@ -23,21 +24,98 @@ describe('runInit', () => {
 
     expect([...result.created].sort()).toEqual(
       [
+        '.agents/skills/circe-add-module/SKILL.md',
+        '.agents/skills/circe-diagnose-errors/SKILL.md',
+        '.agents/skills/circe-project-conventions/SKILL.md',
+        '.agents/skills/circe-verify-changes/SKILL.md',
         '.env.example',
         '.gitignore',
+        'README.md',
         'circe.config.ts',
+        'package.json',
         'src/commands/ping.ts',
         'src/config.ts',
         'tsconfig.json',
       ].sort(),
     );
     expect(result.skipped).toEqual([]);
+    expect(result.runtime).toBe('bun');
+    expect(result.template).toBe('minimal');
 
     const config = await readFile(path.join(dir, 'circe.config.ts'), 'utf8');
     expect(config).toContain('defineCirceConfig');
 
     const command = await readFile(path.join(dir, 'src/commands/ping.ts'), 'utf8');
     expect(command).toContain('defineCommand');
+  });
+
+  test('scaffolds a Deno-first project with deno.json and zero node/npm files', async () => {
+    const result = await runInit(dir, { runtime: 'deno', template: 'minimal' });
+
+    expect([...result.created].sort()).toEqual(
+      [
+        '.agents/skills/circe-add-module/SKILL.md',
+        '.agents/skills/circe-diagnose-errors/SKILL.md',
+        '.agents/skills/circe-project-conventions/SKILL.md',
+        '.agents/skills/circe-verify-changes/SKILL.md',
+        '.env.example',
+        '.gitignore',
+        'README.md',
+        'circe.config.ts',
+        'deno.json',
+        'src/commands/ping.ts',
+        'src/config.ts',
+      ].sort(),
+    );
+    expect(result.created).not.toContain('package.json');
+    expect(result.created).not.toContain('tsconfig.json');
+
+    const denoConfig = await readFile(path.join(dir, 'deno.json'), 'utf8');
+    expect(denoConfig).toContain('npm:@sxnnyside/circe');
+    expect(denoConfig).toContain('deno run -A --watch');
+  });
+
+  test('scaffolds the official agent skills into every template tier and runtime', async () => {
+    const result = await runInit(dir, { runtime: 'node', template: 'advanced' });
+
+    for (const skill of [
+      'circe-add-module',
+      'circe-diagnose-errors',
+      'circe-project-conventions',
+      'circe-verify-changes',
+    ]) {
+      expect(result.created).toContain(`.agents/skills/${skill}/SKILL.md`);
+    }
+  });
+
+  test('scaffolds standard template with components, ready event, error boundary, and i18n', async () => {
+    const result = await runInit(dir, { runtime: 'node', template: 'standard' });
+
+    expect(result.created).toContain('src/commands/help.ts');
+    expect(result.created).toContain('src/components/action-button.ts');
+    expect(result.created).toContain('src/events/ready.ts');
+    expect(result.created).toContain('src/error.ts');
+    expect(result.created).toContain('src/localization.ts');
+    expect(result.created).toContain('src/middleware.ts');
+    expect(result.created).toContain('package.json');
+
+    const errorBoundary = await readFile(path.join(dir, 'src/error.ts'), 'utf8');
+    expect(errorBoundary).toContain('defineErrorBoundary');
+  });
+
+  test('scaffolds advanced template with command groups, context menus, modals, pagination and Dockerfile', async () => {
+    const result = await runInit(dir, { runtime: 'bun', template: 'advanced' });
+
+    expect(result.created).toContain('src/command-groups/admin/_group.ts');
+    expect(result.created).toContain('src/command-groups/admin/kick.ts');
+    expect(result.created).toContain('src/context-menus/users/avatar.ts');
+    expect(result.created).toContain('src/context-menus/messages/bookmark.ts');
+    expect(result.created).toContain('src/modals/feedback.ts');
+    expect(result.created).toContain('src/components/pagination.ts');
+    expect(result.created).toContain('Dockerfile');
+
+    const dockerfile = await readFile(path.join(dir, 'Dockerfile'), 'utf8');
+    expect(dockerfile).toContain('oven/bun');
   });
 
   test('never overwrites a file that already exists, and reports it as skipped', async () => {
@@ -118,6 +196,19 @@ describe('renderInitResult', () => {
     expect(renderInitResult(result, 'bun')).toContain('bun x circe dev');
   });
 
+  test('outputs Deno tasks when runtime is deno', () => {
+    const result = {
+      created: ['deno.json', 'circe.config.ts'],
+      skipped: [],
+      runtime: 'deno' as const,
+      template: 'minimal' as const,
+    };
+
+    const output = renderInitResult(result);
+    expect(output).toContain('deno task dev');
+    expect(output).not.toContain('npm install');
+  });
+
   test('lists created and skipped files, with next steps only when something was created', () => {
     const output = renderInitResult({ created: ['circe.config.ts'], skipped: ['src/config.ts'] });
 
@@ -130,5 +221,27 @@ describe('renderInitResult', () => {
     const output = renderInitResult({ created: [], skipped: ['circe.config.ts'] });
 
     expect(output).not.toContain('Next steps:');
+  });
+});
+
+describe('CLI argument parsing for init', () => {
+  test('parses --runtime and --template options', () => {
+    const parsed = parseArgs(['init', 'my-bot', '--runtime', 'deno', '--template', 'advanced']);
+    expect(parsed.kind).toBe('run');
+    if (parsed.kind === 'run') {
+      expect(parsed.command).toBe('init');
+      expect(parsed.targetDir).toBe('my-bot');
+      expect(parsed.runtime).toBe('deno');
+      expect(parsed.template).toBe('advanced');
+    }
+  });
+
+  test('parses template shortcut flags like --standard and --advanced', () => {
+    const parsed = parseArgs(['init', '--advanced', '-r', 'bun']);
+    expect(parsed.kind).toBe('run');
+    if (parsed.kind === 'run') {
+      expect(parsed.template).toBe('advanced');
+      expect(parsed.runtime).toBe('bun');
+    }
   });
 });

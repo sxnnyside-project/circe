@@ -1,0 +1,20 @@
+{
+  "name": "circe-bot-standard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "circe dev",
+    "start": "circe start",
+    "build": "circe build"
+  },
+  "dependencies": {
+    "@sxnnyside/circe": "^1.2.0",
+    "discord.js": "^14.16.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "typescript": "^5.9.0"
+  }
+}

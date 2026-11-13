@@ -1,6 +1,7 @@
 import type { ClientOptions, GatewayIntentBits } from 'discord.js';
 import type { z } from 'zod';
 import type { HealthConfig } from '../health/handler.js';
+import type { InteractionTelemetryHandler } from '../observability/metrics.js';
 import type { CirceConfig } from './env-config.js';
 import type { CirceIntegration } from './integration.js';
 
@@ -78,6 +79,14 @@ interface CirceConfigFileBase<Schema extends z.ZodType> {
 
   /** Named `{ name, setup(context) }` extensions — the sole extension point of `circe.config.ts`. */
   readonly integrations?: readonly CirceIntegration[];
+
+  /**
+   * Telemetry callback triggered on every interaction completion.
+   *
+   * @remarks
+   * Emits duration, outcome status, and routing metadata for Golden Signals APM integration.
+   */
+  readonly onInteractionComplete?: InteractionTelemetryHandler;
 }
 
 /**

@@ -286,6 +286,49 @@ describe('handleCommandInteraction', () => {
     expect(replies).toHaveLength(0);
   });
 
+  test('a throwing onCommandError is logged and does not escape, so it cannot become an unhandled rejection', async () => {
+    const registry = new CommandRegistry();
+    registry.register({
+      builder: new SlashCommandBuilder().setName('boom').setDescription('boom'),
+      execute: () => {
+        throw new Error('db down');
+      },
+    });
+    const { logger, entries } = silentLogger();
+    const { interaction } = makeInteraction('boom');
+
+    await expect(
+      handleCommandInteraction(interaction as never, {
+        registry,
+        logger,
+        onCommandError: () => {
+          throw new Error('InteractionAlreadyReplied');
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(entries.some((entry) => entry.message.includes('Error handler threw'))).toBe(true);
+  });
+
+  test('a throwing onUnknownCommand is logged and does not escape', async () => {
+    const { logger, entries } = silentLogger();
+    const { interaction } = makeInteraction('missing');
+
+    await expect(
+      handleCommandInteraction(interaction as never, {
+        registry: new CommandRegistry(),
+        logger,
+        onUnknownCommand: () => {
+          throw new Error('reply failed');
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(
+      entries.some((entry) => entry.message.includes('Unknown-interaction handler threw')),
+    ).toBe(true);
+  });
+
   test('regression: onCommandError overrides the default error reply and receives a CommandError', async () => {
     const registry = new CommandRegistry();
     registry.register({

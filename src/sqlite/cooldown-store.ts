@@ -9,6 +9,8 @@ const DEFAULT_SWEEP_INTERVAL_MS = 60_000;
 interface InternalDriver {
   get(key: string): { expires_at: number } | null | undefined;
   hit(key: string, expiresAt: number): void;
+  /** Takes the key only if free; `true` when this call took it. One statement, so processes sharing the file cannot both win. */
+  claim(key: string, expiresAt: number, now: number): boolean;
   delete(key: string): void;
   sweep(now: number): void;
   close(): void;
@@ -20,7 +22,7 @@ interface InternalDriver {
  * @remarks
  * - `'auto'`: Detects the runtime and selects `'bun'` under Bun, `'node'` under Node/Deno.
  * - `'bun'`: Uses Bun's native `bun:sqlite` engine (zero-copy, Bun only).
- * - `'node'`: Uses standard library `node:sqlite` (DatabaseSync, Node 22.5+, Node 24+, Deno 2+, Bun).
+ * - `'node'`: Uses standard library `node:sqlite` (DatabaseSync, Node 22.18+ (22.5-22.12 need --experimental-sqlite), Node 24+, Deno 2.2+, Bun).
  *
  * @public
  */
@@ -61,7 +63,7 @@ type BunDatabaseConstructor = new (
   run(sql: string, params?: unknown[]): void;
   query(sql: string): {
     get(param?: unknown): unknown;
-    run(...params: unknown[]): void;
+    run(...params: unknown[]): { changes: number | bigint };
   };
   close(): void;
 };
@@ -73,7 +75,7 @@ type NodeDatabaseSyncConstructor = new (
   exec(sql: string): void;
   prepare(sql: string): {
     get(param?: unknown): unknown;
-    run(...params: unknown[]): void;
+    run(...params: unknown[]): { changes: number | bigint };
   };
   close(): void;
 };
@@ -104,14 +106,18 @@ function createBunDriver(path: string): InternalDriver {
   const hitStmt = db.query(
     'INSERT INTO cooldowns (key, expires_at) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET expires_at = excluded.expires_at;',
   );
+  const claimStmt = db.query(
+    'INSERT INTO cooldowns (key, expires_at) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET expires_at = excluded.expires_at WHERE cooldowns.expires_at <= ?;',
+  );
   const deleteStmt = db.query('DELETE FROM cooldowns WHERE key = ?;');
   const sweepStmt = db.query('DELETE FROM cooldowns WHERE expires_at <= ?;');
 
   return {
     get: (key) => checkStmt.get(key) as { expires_at: number } | null,
-    hit: (key, expiresAt) => hitStmt.run(key, expiresAt),
-    delete: (key) => deleteStmt.run(key),
-    sweep: (now) => sweepStmt.run(now),
+    hit: (key, expiresAt) => void hitStmt.run(key, expiresAt),
+    claim: (key, expiresAt, now) => Number(claimStmt.run(key, expiresAt, now).changes) > 0,
+    delete: (key) => void deleteStmt.run(key),
+    sweep: (now) => void sweepStmt.run(now),
     close: () => db.close(),
   };
 }
@@ -123,7 +129,7 @@ function createNodeDriver(path: string): InternalDriver {
     DatabaseSyncClass = require('node:sqlite').DatabaseSync;
   } catch (error) {
     throw new Error(
-      'The "node" SQLite driver requires Node 22.5+, Node 24+, Deno 2+, or Bun with node:sqlite support.',
+      'The "node" SQLite driver requires Node 22.18+ (22.13+ runs without flags; 22.5-22.12 need --experimental-sqlite), Node 24+, Deno 2.2+, or Bun with node:sqlite support.',
       { cause: error },
     );
   }
@@ -142,21 +148,25 @@ function createNodeDriver(path: string): InternalDriver {
   const hitStmt = db.prepare(
     'INSERT INTO cooldowns (key, expires_at) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET expires_at = excluded.expires_at;',
   );
+  const claimStmt = db.prepare(
+    'INSERT INTO cooldowns (key, expires_at) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET expires_at = excluded.expires_at WHERE cooldowns.expires_at <= ?;',
+  );
   const deleteStmt = db.prepare('DELETE FROM cooldowns WHERE key = ?;');
   const sweepStmt = db.prepare('DELETE FROM cooldowns WHERE expires_at <= ?;');
 
   return {
     get: (key) => checkStmt.get(key) as { expires_at: number } | undefined,
-    hit: (key, expiresAt) => hitStmt.run(key, expiresAt),
-    delete: (key) => deleteStmt.run(key),
-    sweep: (now) => sweepStmt.run(now),
+    hit: (key, expiresAt) => void hitStmt.run(key, expiresAt),
+    claim: (key, expiresAt, now) => Number(claimStmt.run(key, expiresAt, now).changes) > 0,
+    delete: (key) => void deleteStmt.run(key),
+    sweep: (now) => void sweepStmt.run(now),
     close: () => db.close(),
   };
 }
 
 /**
  * Universal SQLite-backed `CooldownStore` supporting both `bun:sqlite` (under Bun)
- * and `node:sqlite` (under Node 22.5+, Node 24+, Deno 2+).
+ * and `node:sqlite` (under Node 22.18+, Node 24+, Deno 2.2+).
  *
  * @remarks
  * Architecture features:
@@ -173,7 +183,7 @@ function createNodeDriver(path: string): InternalDriver {
  * const store = new SqliteCooldownStore({ path: './cache/cooldowns.sqlite' });
  *
  * // Or with Explicit Resource Management (TS 5.2+ / Node 22+)
- * using localStore = new SqliteCooldownStore(':memory:');
+ * using localStore = new SqliteCooldownStore();
  * ```
  *
  * @public
@@ -186,18 +196,9 @@ export class SqliteCooldownStore implements CooldownStore {
   /**
    * Creates a new `SqliteCooldownStore` instance.
    *
-   * @param options - File path string (e.g. `":memory:"` or `"./data.sqlite"`) or full options object.
-   * @param legacySweepIntervalMs - Sweep interval in ms when `options` is supplied as a raw path string.
+   * @param opts - Database path, sweep interval and driver selection.
    */
-  constructor(
-    options: string | SqliteCooldownStoreOptions = ':memory:',
-    legacySweepIntervalMs = DEFAULT_SWEEP_INTERVAL_MS,
-  ) {
-    const opts: SqliteCooldownStoreOptions =
-      typeof options === 'string'
-        ? { path: options, sweepIntervalMs: legacySweepIntervalMs }
-        : options;
-
+  constructor(opts: SqliteCooldownStoreOptions = {}) {
     const path = opts.path ?? ':memory:';
     const sweepIntervalMs = opts.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS;
     const requestedDriver = opts.driver ?? 'auto';
@@ -256,6 +257,27 @@ export class SqliteCooldownStore implements CooldownStore {
       return;
     }
     this.#driver.hit(key, Date.now() + durationMs);
+  }
+
+  /**
+   * Starts a cooldown only if the key is free, in one atomic statement.
+   *
+   * @param key - Cooldown bucket identifier.
+   * @param durationMs - Cooldown duration in milliseconds from now.
+   * @returns `0` when this call took the cooldown, otherwise the milliseconds left on the one already running.
+   * @public
+   */
+  claim(key: string, durationMs: number): number {
+    if (this.#disposed) {
+      return 0;
+    }
+    const now = Date.now();
+    if (this.#driver.claim(key, now + durationMs, now)) {
+      return 0;
+    }
+    // The holder can expire and be swept between the failed claim and this read; that means free, so try again.
+    const remaining = (this.#driver.get(key)?.expires_at ?? 0) - now;
+    return remaining > 0 ? remaining : this.claim(key, durationMs);
   }
 
   /**

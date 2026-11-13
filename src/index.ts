@@ -1,3 +1,4 @@
+// Application & Lifecycle
 export type {
   CirceApp,
   CirceCommandGroups,
@@ -55,6 +56,7 @@ export {
   resolveIntegrations,
 } from './config/integration.js';
 
+// Discord Commands & Autocomplete
 export { CommandError } from './discord/commands/errors.js';
 export type {
   CommandGroupDefinition,
@@ -78,6 +80,8 @@ export type {
   GuardResult,
 } from './discord/commands/types.js';
 export { defineCommand } from './discord/commands/types.js';
+
+// Discord Components & Pagination
 export { ComponentError } from './discord/components/errors.js';
 export { MemoryPaginationStore } from './discord/components/pagination/memory-store.js';
 export type {
@@ -89,6 +93,7 @@ export type {
   PaginationSession,
   PaginationStore,
   PaginatorPage,
+  SerializedPaginatorPage,
 } from './discord/components/pagination/types.js';
 export type { ParamNames, ParamsFromPattern } from './discord/components/pattern.js';
 export { ComponentRegistry } from './discord/components/registry.js';
@@ -105,6 +110,8 @@ export type {
   PatternComponentDefinition,
 } from './discord/components/types.js';
 export { defineComponent } from './discord/components/types.js';
+
+// Discord Context Menus
 export { ContextMenuCommandError } from './discord/context-menus/errors.js';
 export { ContextMenuCommandRegistry } from './discord/context-menus/registry.js';
 export type {
@@ -122,10 +129,14 @@ export type {
   UserContextMenuCommandContext,
 } from './discord/context-menus/types.js';
 export { defineMessageCommand, defineUserCommand } from './discord/context-menus/types.js';
+
+// Discord Events
 export { EventError } from './discord/events/errors.js';
 export { EventRegistry } from './discord/events/registry.js';
 export type { EventDefinition } from './discord/events/types.js';
 export { defineEvent } from './discord/events/types.js';
+
+// Discord Guards & Cooldowns
 export type {
   CooldownContext,
   CooldownOptions,
@@ -140,6 +151,8 @@ export type { InvokerContext, InvokerOnlyOptions } from './discord/guards/invoke
 export { invokerOnly } from './discord/guards/invoker-only.js';
 export type { MemberContext } from './discord/guards/permissions.js';
 export { hasPermission } from './discord/guards/permissions.js';
+
+// Discord Modals
 export { ModalError } from './discord/modals/errors.js';
 export { ModalRegistry } from './discord/modals/registry.js';
 export type {
@@ -171,8 +184,8 @@ export type {
   HealthProbeStatus,
 } from './health/handler.js';
 export { createHealthHandler } from './health/handler.js';
+
 // Localization (l10n, i18n & g11n)
-// Legacy i18n Compatibility (Deprecated)
 export type {
   DiscordLocale,
   I18nContext,
@@ -213,7 +226,16 @@ export type {
 } from './logging/logger.js';
 export { createLogger } from './logging/logger.js';
 
-// Observability & Telemetry
+// Observability & Golden Signals Telemetry
+export type {
+  InteractionMetric,
+  InteractionMetricKind,
+  InteractionMetricStatus,
+  InteractionTelemetryHandler,
+  LatencyAccumulator,
+  LatencySnapshot,
+} from './observability/metrics.js';
+export { createLatencyAccumulator } from './observability/metrics.js';
 export type {
   ErrorReportContext,
   ErrorReporter,
@@ -225,6 +247,8 @@ export type { Runtime } from './runtime/detect.js';
 export { detectRuntime } from './runtime/detect.js';
 export type { Watcher, WatchTarget } from './runtime/watcher.js';
 export { createWatcher } from './runtime/watcher.js';
+
+// Transport & HTTP Interactions
 export type { InteractionsHttpHandlerOptions } from './transport/http-handler.js';
 export { createInteractionsHandler } from './transport/http-handler.js';
 export type {
@@ -233,7 +257,6 @@ export type {
 } from './transport/serve.js';
 export { startInteractionsServer } from './transport/serve.js';
 export type { VerifySignatureOptions } from './transport/verify-signature.js';
-// Transport & HTTP Interactions
 export {
   DISCORD_SIGNATURE_HEADER,
   DISCORD_TIMESTAMP_HEADER,

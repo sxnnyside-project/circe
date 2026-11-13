@@ -1,7 +1,29 @@
 import { describe, expect, test } from 'bun:test';
+import { EmbedBuilder } from 'discord.js';
 import { MemoryPaginationStore } from '../../../../src/discord/components/pagination/memory-store.js';
 import { createPaginator } from '../../../../src/discord/components/pagination/paginator.js';
+import type {
+  PaginationSession,
+  PaginationStore,
+} from '../../../../src/discord/components/pagination/types.js';
 import { testComponent } from '../../../../src/testing/index.js';
+
+/** A store shared by several paginators that, like Redis, only ever holds JSON text. */
+function sharedJsonStore(): PaginationStore {
+  const rows = new Map<string, string>();
+  return {
+    get: async (id) => {
+      const row = rows.get(id);
+      return row === undefined ? undefined : (JSON.parse(row) as PaginationSession);
+    },
+    set: async (id, session) => {
+      rows.set(id, JSON.stringify(session));
+    },
+    delete: async (id) => {
+      rows.delete(id);
+    },
+  };
+}
 
 function fakeReplyableInteraction() {
   const replies: unknown[] = [];
@@ -128,6 +150,17 @@ describe('createPaginator', () => {
     expect((updates[0] as { content: string }).content).toBe('page 2');
     expect(isDisabled(updates[0], 0)).toBe(false);
     expect(isDisabled(updates[0], 1)).toBe(false);
+  });
+
+  test('a page without content clears the text of the previous page', async () => {
+    const paginator = createPaginator();
+    const interaction = fakeReplyableInteraction();
+    await paginator.reply(interaction, [{ content: 'page 1' }, { embeds: [] }]);
+
+    const [nextId] = extractCustomIds(interaction.replies[0]).slice(1);
+    const updates = await clickButton(paginator, nextId as string);
+
+    expect((updates[0] as { content: string }).content).toBe('');
   });
 
   test('next is disabled again on the last page, and clicking next there is a no-op bound at the last page', async () => {
@@ -351,7 +384,11 @@ describe('createPaginator', () => {
   test('invokerOnly: another user cannot page; the invoker can', async () => {
     const store = new MemoryPaginationStore();
     const paginator = createPaginator({ store, invokerOnly: true });
-    store.set('s1', { pages: [{ content: 'one' }, { content: 'two' }], index: 0 }, 60_000);
+    store.set(
+      's1',
+      { pages: [{ content: 'one' }, { content: 'two' }], index: 0, idleUntil: Date.now() + 60_000 },
+      60_000,
+    );
 
     const stranger = await testComponent(paginator.component, {
       customId: 'circe-paginate:s1:next',
@@ -374,7 +411,11 @@ describe('createPaginator', () => {
   test('without invokerOnly any user may page (a deliberately shared pager)', async () => {
     const store = new MemoryPaginationStore();
     const paginator = createPaginator({ store });
-    store.set('s1', { pages: [{ content: 'one' }, { content: 'two' }], index: 0 }, 60_000);
+    store.set(
+      's1',
+      { pages: [{ content: 'one' }, { content: 'two' }], index: 0, idleUntil: Date.now() + 60_000 },
+      60_000,
+    );
 
     const result = await testComponent(paginator.component, {
       customId: 'circe-paginate:s1:next',
@@ -382,5 +423,35 @@ describe('createPaginator', () => {
     });
 
     expect(result.updates).toHaveLength(1);
+  });
+
+  test('sessions are plain JSON, so another process can serve the click that follows a reply', async () => {
+    const store = sharedJsonStore();
+    const replica = createPaginator({ store });
+    const other = createPaginator({ store });
+    const interaction = fakeReplyableInteraction();
+    await replica.reply(interaction, [
+      { embeds: [new EmbedBuilder().setTitle('one')] },
+      { embeds: [new EmbedBuilder().setTitle('two')] },
+    ]);
+
+    const [nextId] = extractCustomIds(interaction.replies[0]).slice(1);
+    const updates = await clickButton(other, nextId as string);
+
+    expect((updates[0] as { embeds: { title: string }[] }).embeds[0]?.title).toBe('two');
+  });
+
+  test('an older timer does not disable a pager another process kept alive', async () => {
+    const store = sharedJsonStore();
+    const replica = createPaginator({ store, idleTimeoutMs: 40 });
+    const other = createPaginator({ store, idleTimeoutMs: 400 });
+    const interaction = fakeReplyableInteraction();
+    await replica.reply(interaction, [{ content: 'one' }, { content: 'two' }]);
+
+    const [nextId] = extractCustomIds(interaction.replies[0]).slice(1);
+    await clickButton(other, nextId as string);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+
+    expect(interaction.edits).toHaveLength(0);
   });
 });

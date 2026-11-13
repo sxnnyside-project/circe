@@ -41,6 +41,7 @@ import { normalizeError } from '../errors/normalize-error.js';
 import { createHealthHandler, type HealthConfig } from '../health/handler.js';
 import type { I18nResolver, LocalizationResolver } from '../localization/resolver.js';
 import { createLogger, type Logger } from '../logging/logger.js';
+import type { InteractionTelemetryHandler } from '../observability/metrics.js';
 import type { ErrorReporter } from '../observability/report-error.js';
 import { type InteractionsServer, startInteractionsServer } from '../transport/serve.js';
 import {
@@ -54,77 +55,168 @@ import type { MiddlewareModule } from './middleware.js';
 
 /**
  * The minimal Discord credential contract every bot needs regardless of
- * what else its own configuration schema contains. Circe requires exactly
- * these fields on `config` — nothing bot-specific.
+ * its domain configuration schema. Circe requires exactly these fields.
+ *
+ * @public
  */
 export interface CirceCredentials {
+  /** The Discord Bot Token used for Gateway login and REST API authorization. */
   readonly token: string;
+  /** The application Client ID from the Discord Developer Portal. */
   readonly clientId: string;
-  /** Present in development/staging for guild-scoped registration; absent in production for global registration. */
+  /**
+   * Present in development/staging for instant guild-scoped registration;
+   * omitted in production for global command deployment.
+   */
   readonly guildId?: string;
 }
 
+/**
+ * Command registry and discovery interface.
+ *
+ * @public
+ */
 export interface CirceCommands {
+  /** The underlying registered command definitions. */
   readonly registry: CommandRegistry;
-  /** Discovers, imports, and registers every command module found in `directory` (subfolders included). */
+  /**
+   * Discovers, imports, and registers every command module found in `directory` (subfolders included).
+   *
+   * @param directory - Absolute path or file URL to scan.
+   */
   load(directory: string | URL): Promise<void>;
-  /** Registers the current registry contents with Discord (guild-scoped if `guildId` is configured, global otherwise). */
+  /**
+   * Registers the current registry contents with Discord REST API
+   * (guild-scoped if `guildId` is configured, global otherwise).
+   */
   register(): Promise<void>;
 }
 
+/**
+ * Hierarchical command group registry and loader.
+ *
+ * @public
+ */
 export interface CirceCommandGroups {
-  /** Same registry as `commands` — a group folder assembles into one ordinary registered command. */
+  /** Same underlying registry as {@link CirceCommands}. */
   readonly registry: CommandRegistry;
-  /** Discovers, imports, and registers every group folder found directly under `directory`. */
+  /**
+   * Discovers, imports, and registers every group folder found directly under `directory`.
+   *
+   * @param directory - Absolute path or file URL to scan.
+   */
   load(directory: string | URL): Promise<void>;
 }
 
+/**
+ * Context menu command registry and loader interface.
+ *
+ * @public
+ */
 export interface CirceContextMenuCommands {
+  /** The underlying context menu command registry. */
   readonly registry: ContextMenuCommandRegistry;
-  /** Discovers, imports, and registers every command under `directory`'s fixed `users/` and `messages/` subfolders. */
+  /**
+   * Discovers, imports, and registers commands under `directory`'s fixed `users/` and `messages/` subfolders.
+   *
+   * @param directory - Absolute path or file URL to scan.
+   */
   load(directory: string | URL): Promise<void>;
 }
 
+/**
+ * Gateway event dispatcher and loader interface.
+ *
+ * @public
+ */
 export interface CirceEvents {
+  /** The underlying event registry. */
   readonly registry: EventRegistry;
-  /** Discovers, imports, and registers every event module found in `directory` (subfolders included). */
+  /**
+   * Discovers, imports, and registers every event module found in `directory`.
+   *
+   * @param directory - Absolute path or file URL to scan.
+   */
   load(directory: string | URL): Promise<void>;
 }
 
+/**
+ * Component interaction handler registry and loader interface.
+ *
+ * @public
+ */
 export interface CirceComponents {
+  /** The underlying component handler registry. */
   readonly registry: ComponentRegistry;
-  /** Discovers, imports, and registers every component handler module found in `directory` (subfolders included). */
+  /**
+   * Discovers, imports, and registers every component handler module found in `directory`.
+   *
+   * @param directory - Absolute path or file URL to scan.
+   */
   load(directory: string | URL): Promise<void>;
 }
 
+/**
+ * Modal submission handler registry and loader interface.
+ *
+ * @public
+ */
 export interface CirceModals {
+  /** The underlying modal registry. */
   readonly registry: ModalRegistry;
-  /** Discovers, imports, and registers every modal handler module found in `directory` (subfolders included). */
+  /**
+   * Discovers, imports, and registers every modal handler module found in `directory`.
+   *
+   * @param directory - Absolute path or file URL to scan.
+   */
   load(directory: string | URL): Promise<void>;
 }
 
+/**
+ * The unified Circe application instance.
+ *
+ * @remarks
+ * Orchestrates the full IoC runtime: lifecycle management, Discord client, command/event routers,
+ * health endpoints, and graceful process signals.
+ *
+ * @public
+ */
 export interface CirceApp<Config extends CirceCredentials = CirceCredentials> {
+  /** The resolved, validated application configuration. */
   readonly config: Config;
+  /** Component-scoped root application logger. */
   readonly logger: Logger;
+  /** Current state machine phase ('created' | 'starting' | 'running' | 'stopping' | 'stopped'). */
   readonly state: LifecycleState;
+  /** The underlying discord.js Client instance. */
   readonly client: Client;
+  /** Chat command management and bulk registration interface. */
   readonly commands: CirceCommands;
+  /** Hierarchical command group loader and registration interface. */
   readonly commandGroups: CirceCommandGroups;
+  /** Context menu command management interface. */
   readonly contextMenuCommands: CirceContextMenuCommands;
+  /** Gateway event listeners management interface. */
   readonly events: CirceEvents;
+  /** Component handlers management interface. */
   readonly components: CirceComponents;
+  /** Modal handlers management interface. */
   readonly modals: CirceModals;
   /**
    * Registers a hook to run during `start()`, in registration order. All
    * `onStart` hooks run before login and before command registration — this
    * is where a bot puts database connections, service startup, or anything
    * else that needs to be ready before Discord traffic arrives.
+   *
+   * @param hook - Asynchronous or synchronous startup callback.
    */
   onStart(hook: LifecycleHook): void;
   /**
    * Registers a hook to run during `stop()`, in reverse registration order.
    * Runs after the client has been destroyed and signal handlers removed —
    * Discord stops sending new interactions before app-level resources tear down.
+   *
+   * @param hook - Asynchronous or synchronous teardown callback.
    */
   onStop(hook: LifecycleHook): void;
   /**
@@ -134,6 +226,8 @@ export interface CirceApp<Config extends CirceCredentials = CirceCredentials> {
    * registration order; one that throws is logged and does not stop the
    * others. Never fires under the HTTP-only transport, which has no gateway
    * connection.
+   *
+   * @param hook - Ready callback receiving the authenticated Client.
    */
   onReady(hook: ReadyHook): void;
   /**
@@ -143,23 +237,65 @@ export interface CirceApp<Config extends CirceCredentials = CirceCredentials> {
    * logged, never fatal. Timing only: the schedule is not persisted, so a
    * restart begins a fresh interval. Never fires under the HTTP-only
    * transport.
+   *
+   * @param intervalMs - Schedule interval in milliseconds (must be > 0).
+   * @param task - Periodic task callback receiving the authenticated Client.
+   * @param options - Additional timer options.
    */
   every(intervalMs: number, task: IntervalTask, options?: IntervalOptions): void;
+  /**
+   * Starts the application: executes `onStart` hooks, logs in to Discord, and registers commands.
+   *
+   * @throws {@link LifecycleError} If called when the application is not in `'created'` state.
+   */
   start(): Promise<void>;
+  /**
+   * Stops the application gracefully: destroys client, runs `onStop` hooks, and stops servers.
+   */
   stop(): Promise<void>;
+  /**
+   * Supports Explicit Resource Management (`await using app = createCirce(...)`).
+   * Automatically invokes {@link stop} upon exiting the `using` lexical scope.
+   */
+  [Symbol.asyncDispose](): Promise<void>;
 }
 
+/**
+ * Task callback executed repeatedly on an interval timer.
+ *
+ * @param client - The authenticated discord.js Client instance.
+ *
+ * @public
+ */
 export type IntervalTask = (client: Client) => void | Promise<void>;
 
+/**
+ * Configuration options for {@link CirceApp.every}.
+ *
+ * @public
+ */
 export interface IntervalOptions {
-  /** Identifies the task in logs. Defaults to `"interval"`. */
+  /**
+   * Human-readable identifier for the task used in log messages.
+   * @defaultValue `"interval"`
+   */
   readonly name?: string;
-  /** Run once as soon as the client is ready instead of waiting a full interval. Defaults to `false`. */
+  /**
+   * Whether to run the task immediately upon readiness rather than waiting one interval.
+   * @defaultValue `false`
+   */
   readonly runImmediately?: boolean;
 }
 
+/**
+ * Options accepted by {@link createCirce} to instantiate an application container.
+ *
+ * @public
+ */
 export interface CreateCirceOptions<Config extends CirceCredentials> {
+  /** The validated Discord credentials and application configuration. */
   config: Config;
+  /** Gateway intent bits required by this bot. */
   intents: GatewayIntentBits[];
   /**
    * Remaining discord.js `Client` options — `partials`, `presence`,
@@ -173,70 +309,72 @@ export interface CreateCirceOptions<Config extends CirceCredentials> {
   logger?: Logger;
   /**
    * Whether Circe installs SIGINT/SIGTERM/uncaughtException/unhandledRejection
-   * process handlers on `start()` and removes them on `stop()`. Defaults to
-   * `true`. Set `false` in environments (e.g. tests) that manage the process
-   * lifecycle themselves.
+   * process handlers on `start()` and removes them on `stop()`.
+   * @defaultValue `true`
    */
   handleProcessSignals?: boolean;
   /**
    * What the process handler does with an unhandled promise rejection:
-   * `'exit'` (default, same as Node) logs it and shuts the app down with exit
-   * code 1; `'log'` only logs it and keeps the bot running. Ignored when
-   * `handleProcessSignals` is `false`.
+   * `'exit'` (default) logs it and shuts the app down with exit code 1;
+   * `'log'` only logs it and keeps the bot running.
+   * @defaultValue `'exit'`
    */
   onUnhandledRejection?: 'exit' | 'log';
   /**
    * How long a signal- or crash-triggered shutdown may take before the
-   * process is forced to exit with code 1. Defaults to 10 seconds. A second
-   * signal during shutdown forces the exit immediately.
+   * process is forced to exit with code 1.
+   * @defaultValue `10000` (10 seconds)
    */
   shutdownTimeoutMs?: number;
-  /** Whether `start()` registers commands with Discord automatically after login. Defaults to `true`. */
+  /**
+   * Whether `start()` registers commands with Discord automatically after login.
+   * @defaultValue `true`
+   */
   autoRegisterCommands?: boolean;
   /**
-   * Whether `start()` calls `client.login()`, opening a real gateway
-   * connection. Defaults to `true`. Set `false` to exercise the rest of the
-   * startup sequence (event/command wiring, registration) without a live
-   * Discord connection — the situation any test of a Circe app is in.
+   * Whether `start()` calls `client.login()`, opening a real gateway connection.
+   * @defaultValue `true`
    */
   autoLogin?: boolean;
-  /** Override the REST client used for command registration — mainly for tests. Defaults to a real discord.js `REST` instance. */
+  /** Override the REST client used for command registration — mainly for tests. */
   rest?: CommandRest;
-  /** Called when an interaction names a command that isn't registered. Defaults to a plain ephemeral reply. */
+  /** Called when an interaction names a command that isn't registered. */
   onUnknownCommand?: UnknownCommandHandler;
-  /** Called when a guard denies execution. Defaults to a plain ephemeral reply with the guard's reason. */
+  /** Called when a guard denies execution. */
   onGuardDenied?: GuardDeniedHandler;
-  /** Called when a command throws. Defaults to a plain ephemeral reply. Override for localized/branded error responses. */
+  /** Called when a command throws. Override for localized/branded error responses. */
   onCommandError?: CommandErrorHandler;
-  /** Called when a customId doesn't match any registered component prefix. Defaults to a plain ephemeral reply. */
+  /** Called when a customId doesn't match any registered component prefix. */
   onUnknownComponent?: UnknownComponentHandler;
-  /** Called when a component handler throws. Defaults to a plain ephemeral reply. Override for localized/branded error responses. */
+  /** Called when a component handler throws. Override for localized/branded error responses. */
   onComponentError?: ComponentErrorHandler;
-  /** Called when a component guard denies execution. Defaults to a plain ephemeral reply with the guard's reason. */
+  /** Called when a component guard denies execution. */
   onComponentGuardDenied?: ComponentGuardDeniedHandler;
-  /** Called when a modal guard denies execution. Defaults to a plain ephemeral reply with the guard's reason. */
+  /** Called when a modal guard denies execution. */
   onModalGuardDenied?: ModalGuardDeniedHandler;
-  /** Called when a customId doesn't match any registered modal prefix. Defaults to a plain ephemeral reply. */
+  /** Called when a customId doesn't match any registered modal prefix. */
   onUnknownModal?: UnknownModalHandler;
-  /** Called when a modal handler throws. Defaults to a plain ephemeral reply. Override for localized/branded error responses. */
+  /** Called when a modal handler throws. Override for localized/branded error responses. */
   onModalError?: ModalErrorHandler;
-  /** Called when a context menu interaction names a command that isn't registered. Defaults to a plain ephemeral reply. */
+  /** Called when a context menu interaction names a command that isn't registered. */
   onUnknownContextMenuCommand?: UnknownContextMenuCommandHandler;
-  /** Called when a context menu command's guard denies execution. Defaults to a plain ephemeral reply with the guard's reason. */
+  /** Called when a context menu command's guard denies execution. */
   onContextMenuGuardDenied?: ContextMenuGuardDeniedHandler;
-  /** Called when a context menu command throws. Defaults to a plain ephemeral reply. Override for localized/branded error responses. */
+  /** Called when a context menu command throws. Override for localized/branded error responses. */
   onContextMenuCommandError?: ContextMenuCommandErrorHandler;
-  /** Runs `before`/`after` around every command, component, modal, and context menu interaction — a bot's `middleware.ts`, or passed directly. */
+  /** Runs `before`/`after` around every interaction — a bot's `middleware.ts`, or passed directly. */
   middleware?: MiddlewareModule;
-  /** Resolves `ctx.t(key, params)` across every command, component, modal, and context menu interaction — a bot's `localization.ts` (or `i18n.ts`), or passed directly. Defaults to a resolver that returns keys verbatim, untranslated. */
+  /** Resolves `ctx.t(key, params)` across interactions — a bot's `localization.ts`, or passed directly. */
   localization?: LocalizationResolver;
   /**
    * Resolves `ctx.t(key, params)` across interactions.
    * @deprecated Use `localization` instead.
    */
   i18n?: I18nResolver;
-  /** Called for every error any router's boundary — or the event dispatcher — catches, decoupled from user-facing replies. For external reporting: OpenTelemetry, Sentry, metrics. */
+  /** Called for every error caught by routers or event dispatcher for external observability reporting. */
   onError?: ErrorReporter;
+  /** Telemetry callback invoked upon every interaction lifecycle completion. */
+  onInteractionComplete?: InteractionTelemetryHandler;
 }
 
 /**
@@ -327,20 +465,33 @@ function installProcessHandlers<Config extends CirceCredentials>(
 }
 
 /**
- * Creates the Circe application: the runtime foundation (lifecycle,
- * logging, config carrier, process handling) plus the Discord layer — a
- * real `discord.js` `Client`, and a registry/loader/router triplet each
- * for commands, events, and components, plus autocomplete routing bound
- * to whichever commands define it. The client is a plain public property;
- * Circe does not wrap or hide it.
+ * Creates the Circe application container: the runtime foundation (lifecycle,
+ * logging, config carrier, process handling) plus the Discord layer (real discord.js Client,
+ * command, event, component, modal, and context-menu registry/router subsystems).
  *
- * `start()`/`stop()` orchestrate Circe's own side effects (listener
- * attachment, login, registration, signal handling, client teardown)
- * directly rather than folding them into the `Lifecycle`'s own hook list —
- * that keeps `onStart`/`onStop` hooks a bot registers purely additive:
- * `onStart` hooks always run before login/registration, `onStop` hooks
- * always run after the client is already destroyed, regardless of when
- * the bot happens to call `app.onStart()`/`app.onStop()`.
+ * @remarks
+ * **Key Architectural Traits:**
+ * - The `Client` is exposed directly as a public property; Circe does not wrap or obscure discord.js.
+ * - Startup hooks (`onStart`) always run before login and before command registration.
+ * - Teardown hooks (`onStop`) always run after the client is destroyed and incoming traffic ceases.
+ * - Implements `Symbol.asyncDispose` for ECMAScript Explicit Resource Management.
+ *
+ * @param options - Application setup and configuration options.
+ * @returns A fully initialized {@link CirceApp} instance ready to start.
+ *
+ * @example
+ * ```typescript
+ * import { createCirce } from '@sxnnyside/circe';
+ *
+ * await using app = createCirce({
+ *   config: { token: process.env.DISCORD_TOKEN!, clientId: process.env.DISCORD_CLIENT_ID! },
+ *   intents: [],
+ * });
+ *
+ * await app.start();
+ * ```
+ *
+ * @public
  */
 export function createCirce<Config extends CirceCredentials>(
   options: CreateCirceOptions<Config>,
@@ -576,6 +727,7 @@ export function createCirce<Config extends CirceCredentials>(
           middleware: options.middleware,
           i18n: localizationResolver,
           onError: options.onError,
+          onInteractionComplete: options.onInteractionComplete,
         };
         attachCommandRouter(client, {
           registry: commandRegistry,
@@ -600,7 +752,11 @@ export function createCirce<Config extends CirceCredentials>(
         attachAutocompleteRouter(client, {
           registry: commandRegistry,
           logger: logger.child({ component: 'commands' }),
-          ...omitUndefined({ i18n: localizationResolver }),
+          ...omitUndefined({
+            i18n: localizationResolver,
+            onError: options.onError,
+            onInteractionComplete: options.onInteractionComplete,
+          }),
         });
         attachModalRouter(client, {
           registry: modalRegistry,
@@ -707,6 +863,9 @@ export function createCirce<Config extends CirceCredentials>(
         stopInFlight = undefined;
       });
       return stopInFlight;
+    },
+    async [Symbol.asyncDispose]() {
+      await this.stop();
     },
   };
 

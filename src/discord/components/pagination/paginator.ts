@@ -1,45 +1,52 @@
 import {
+  type APIEmbed,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  type EmbedBuilder,
   StringSelectMenuBuilder,
 } from 'discord.js';
 import { invokerOnly } from '../../guards/invoker-only.js';
 import type { ComponentDefinition } from '../types.js';
 import { defineComponent } from '../types.js';
 import { MemoryPaginationStore } from './memory-store.js';
-import type { PaginationStore, PaginatorPage } from './types.js';
+import type { PaginationStore, PaginatorPage, SerializedPaginatorPage } from './types.js';
 
 const MAX_SELECT_OPTIONS = 25;
 
+/**
+ * Configuration options for creating a paginated embed carousel.
+ *
+ * @public
+ */
 export interface CreatePaginatorOptions {
-  /** Identifies this paginator's buttons among others registered in the same bot. Defaults to `"circe-paginate"`. */
+  /**
+   * Identifies this paginator's buttons among others registered in the same bot.
+   * @defaultValue `"circe-paginate"`
+   */
   readonly id?: string;
-  /** How long a session stays alive with no interaction before its buttons are disabled. Defaults to 5 minutes. Refreshed on every click. */
+  /**
+   * How long a session stays alive without interaction before its buttons are disabled.
+   * @defaultValue `300000` (5 minutes)
+   */
   readonly idleTimeoutMs?: number;
+  /**
+   * Custom session storage provider.
+   * @defaultValue {@link MemoryPaginationStore}
+   */
   readonly store?: PaginationStore;
   /**
-   * Adds a page-select dropdown below the prev/next row, letting the user
-   * jump straight to any page instead of clicking through sequentially.
-   * Silently omitted for a session with more than 25 pages — Discord
-   * select menus cannot hold more options than that, and forcing it would
-   * make the outgoing payload invalid instead of degrading gracefully.
+   * Adds a page-select dropdown below the prev/next row, letting the user jump directly to a page.
+   * Silently omitted if pages exceed 25.
+   * @defaultValue `false`
    */
   readonly pageSelect?: boolean;
   /**
-   * Restricts the buttons to the user who ran the command that produced the
-   * pager. Off by default: a deliberately shared pager (a public leaderboard
-   * anyone may flip) is a legitimate use. When set, other users' clicks are
-   * answered with the guard's denial reason.
+   * Restricts button clicks to the user who ran the command producing the pager.
+   * @defaultValue `false`
    */
   readonly invokerOnly?: boolean;
   /**
-   * Overrides the prev/next button presentation. Circe never hardcodes a
-   * presentation choice without an escape hatch — the default (⬅️/➡️
-   * emoji, no text label) is a sensible starting point, not a fixed
-   * opinion. Supplying `label` without `emoji` drops the default emoji
-   * rather than combining it with your label unexpectedly.
+   * Overrides the prev/next button presentation (emoji and text label).
    */
   readonly buttons?: {
     readonly previous?: { readonly emoji?: string; readonly label?: string };
@@ -85,16 +92,19 @@ interface ReplyableMessage {
   }): Promise<unknown>;
 }
 
+/**
+ * Paginator controller instance managing interaction routing and initial page delivery.
+ *
+ * @public
+ */
 export interface Paginator {
-  /** Register this once, anywhere under `components/` — it handles every session this paginator ever creates. */
+  /** Register this once under `components/` — handles every session this paginator creates. */
   readonly component: ComponentDefinition<Record<string, never>, Record<string, string>>;
   /**
-   * Replies to `interaction` with the first page and wires up the
-   * prev/next buttons (and, if enabled, the page-select dropdown). No
-   * collector involved: clicks route through the ordinary component
-   * registry like any other button, and the session auto-expires
-   * (components disabled in place) via one scheduled edit, not a
-   * listener held open for the pager's lifetime.
+   * Replies to `interaction` with the first page and wires up the prev/next buttons.
+   *
+   * @param interaction - Repliable Discord interaction.
+   * @param pages - Sequence of one or more pages to cycle through.
    */
   reply(
     interaction: ReplyableMessage & EditableMessage,
@@ -143,7 +153,7 @@ function buildSelectRow(
   prefix: string,
   sessionId: string,
   index: number,
-  pages: readonly PaginatorPage[],
+  pages: readonly SerializedPaginatorPage[],
 ): ActionRowBuilder<StringSelectMenuBuilder> | undefined {
   if (pages.length <= 1 || pages.length > MAX_SELECT_OPTIONS) {
     return undefined;
@@ -167,7 +177,7 @@ function buildComponents(
   prefix: string,
   sessionId: string,
   index: number,
-  pages: readonly PaginatorPage[],
+  pages: readonly SerializedPaginatorPage[],
   pageSelect: boolean,
   previous: ButtonPresentation,
   next: ButtonPresentation,
@@ -184,10 +194,20 @@ function buildComponents(
   return rows;
 }
 
+function serializePage(page: PaginatorPage): SerializedPaginatorPage {
+  return {
+    ...(page.content !== undefined ? { content: page.content } : {}),
+    ...(page.embeds !== undefined
+      ? { embeds: page.embeds.map((embed) => ('toJSON' in embed ? embed.toJSON() : embed)) }
+      : {}),
+    ...(page.label !== undefined ? { label: page.label } : {}),
+  };
+}
+
 function pagePayload(
-  page: PaginatorPage | undefined,
+  page: SerializedPaginatorPage | undefined,
   components: PaginatorRow[],
-): { content?: string; embeds: EmbedBuilder[]; components: PaginatorRow[] } {
+): { content?: string; embeds: APIEmbed[]; components: PaginatorRow[] } {
   return {
     ...(page?.content !== undefined ? { content: page.content } : {}),
     embeds: page?.embeds ?? [],
@@ -229,18 +249,33 @@ function disabledComponents(
 
 /**
  * Creates a paginated embed/text carousel: prev/next buttons (and,
- * optionally, a page-select dropdown for jumping directly to a page) that
- * page through `pages` without ever registering a per-message collector.
- * State lives in a `PaginationStore` keyed by a random session id embedded
- * in each component's `customId` (built on the `pattern` matching from
- * 3.1); idle sessions are disabled via a single scheduled edit per
- * session, refreshed on every interaction — never a listener held open
- * indefinitely.
+ * optionally, a page-select dropdown for jumping directly to a page).
+ *
+ * @remarks
+ * No message collectors are held open. State lives in a {@link PaginationStore} keyed
+ * by random session ID. Idle sessions auto-disable components via a single scheduled edit.
+ *
+ * @param options - Paginator configuration options.
+ * @returns A {@link Paginator} controller instance.
+ *
+ * @example
+ * ```typescript
+ * import { createPaginator } from '@sxnnyside/circe';
+ *
+ * export const paginator = createPaginator({ invokerOnly: true });
+ *
+ * // In a command:
+ * await paginator.reply(ctx.interaction, [
+ *   { embeds: [embedPage1] },
+ *   { embeds: [embedPage2] },
+ * ]);
+ * ```
+ *
+ * @public
  */
 export function createPaginator(options: CreatePaginatorOptions = {}): Paginator {
   const prefix = options.id ?? DEFAULT_ID;
   const idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
-  // shortcut: sessions hold live EmbedBuilders in this process, so a bot on several replicas needs sticky routing, then a store that serializes pages to JSON.
   const store = options.store ?? new MemoryPaginationStore();
   const pageSelect = options.pageSelect ?? false;
   const guards = options.invokerOnly ? [invokerOnly()] : [];
@@ -249,18 +284,16 @@ export function createPaginator(options: CreatePaginatorOptions = {}): Paginator
     DEFAULT_PREVIOUS_EMOJI,
   );
   const nextPresentation = resolveButtonPresentation(options.buttons?.next, DEFAULT_NEXT_EMOJI);
-  // One outstanding disable timer per session — every interaction
-  // reschedules it, so it must cancel the previous one first. Without
-  // this, an interaction right before an old timer fires would leave that
-  // stale timer running and it would disable an otherwise-still-active
-  // session: the timer itself *is* the expiry signal, not a re-check
-  // against the store's own TTL (checking `store.get()` here would race
-  // against it, since both use the same duration and the timer fires at
-  // or after the exact moment the store already considers the entry
-  // expired).
+  // One outstanding disable timer per session in this process; every interaction here reschedules it.
+  // The timer is only a prompt to look: whether the session is idle is decided by `idleUntil` in the
+  // store, so a click handled by another process (which extends the session) is never undone by this one.
   const disableTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-  function scheduleAutoDisable(interaction: EditableMessage, sessionId: string): void {
+  function scheduleAutoDisable(
+    interaction: EditableMessage,
+    sessionId: string,
+    delayMs = idleTimeoutMs,
+  ): void {
     const existing = disableTimers.get(sessionId);
     if (existing) {
       clearTimeout(existing);
@@ -268,20 +301,26 @@ export function createPaginator(options: CreatePaginatorOptions = {}): Paginator
 
     const timer = setTimeout(() => {
       disableTimers.delete(sessionId);
-      store.delete(sessionId);
-      void interaction
-        .editReply({
+      void (async () => {
+        const session = await store.get(sessionId);
+        if (session && session.idleUntil > Date.now()) {
+          scheduleAutoDisable(interaction, sessionId, session.idleUntil - Date.now());
+          return;
+        }
+        await store.delete(sessionId);
+        await interaction.editReply({
           components: disabledComponents(
             prefix,
             pageSelect,
             previousPresentation,
             nextPresentation,
           ),
-        })
-        .catch(() => {
-          // The message may already be gone, or the interaction token may have expired — nothing more to do.
         });
-    }, idleTimeoutMs);
+      })().catch(() => {
+        // The store may be unreachable, the message gone, or the interaction token expired; a click
+        // on a stale pager is answered with disabled components anyway.
+      });
+    }, delayMs);
     timer.unref?.();
     disableTimers.set(sessionId, timer);
   }
@@ -291,7 +330,7 @@ export function createPaginator(options: CreatePaginatorOptions = {}): Paginator
     guards,
     async execute(ctx) {
       const { sessionId, direction } = ctx.params;
-      const session = store.get(sessionId);
+      const session = await store.get(sessionId);
 
       if (!session) {
         await ctx.interaction.update({
@@ -317,11 +356,17 @@ export function createPaginator(options: CreatePaginatorOptions = {}): Paginator
         nextIndex = Math.max(session.index - 1, 0);
       }
 
-      store.set(sessionId, { pages: session.pages, index: nextIndex }, idleTimeoutMs);
+      await store.set(
+        sessionId,
+        { pages: session.pages, index: nextIndex, idleUntil: Date.now() + idleTimeoutMs },
+        idleTimeoutMs,
+      );
       const page = session.pages[nextIndex];
 
-      await ctx.interaction.update(
-        pagePayload(
+      // Discord keeps fields an update omits, so the empty `content` clears text left by a previous page.
+      await ctx.interaction.update({
+        content: '',
+        ...pagePayload(
           page,
           buildComponents(
             prefix,
@@ -333,7 +378,7 @@ export function createPaginator(options: CreatePaginatorOptions = {}): Paginator
             nextPresentation,
           ),
         ),
-      );
+      });
 
       scheduleAutoDisable(ctx.interaction, sessionId);
     },
@@ -346,9 +391,14 @@ export function createPaginator(options: CreatePaginatorOptions = {}): Paginator
         throw new RangeError('createPaginator().reply() requires at least one page');
       }
       const sessionId = crypto.randomUUID();
-      store.set(sessionId, { pages, index: 0 }, idleTimeoutMs);
+      const stored = pages.map(serializePage);
+      await store.set(
+        sessionId,
+        { pages: stored, index: 0, idleUntil: Date.now() + idleTimeoutMs },
+        idleTimeoutMs,
+      );
 
-      const page = pages[0];
+      const page = stored[0];
       await interaction.reply(
         pagePayload(
           page,
@@ -356,7 +406,7 @@ export function createPaginator(options: CreatePaginatorOptions = {}): Paginator
             prefix,
             sessionId,
             0,
-            pages,
+            stored,
             pageSelect,
             previousPresentation,
             nextPresentation,

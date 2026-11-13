@@ -1,17 +1,33 @@
 import { type InteractionReplyOptions, MessageFlags } from 'discord.js';
 
-/** The slice of every repliable interaction kind the routers' fallback replies need. */
-interface Repliable {
+/**
+ * Minimal interface representing any repliable Discord interaction.
+ *
+ * @internal
+ */
+export interface Repliable {
+  /** Whether the interaction reply has been acknowledged via deferral. */
   readonly deferred: boolean;
+  /** Whether the interaction has already been answered. */
   readonly replied: boolean;
+  /** Sends a secondary follow-up reply message. */
   followUp(options: InteractionReplyOptions): Promise<unknown>;
+  /** Sends the initial reply message. */
   reply(options: InteractionReplyOptions): Promise<unknown>;
 }
 
 /**
- * The routers' default error/denial reply. Uses `flags` rather than the
- * deprecated `ephemeral` option, and never throws: the interaction may
- * already have expired or been deleted, and there is nothing left to do.
+ * Sends an ephemeral fallback reply safely without throwing if the interaction expired or was deleted.
+ *
+ * @remarks
+ * Uses modern `flags: MessageFlags.Ephemeral` instead of deprecated `ephemeral: true`.
+ * Automatically routes to `followUp` if `deferred` or `replied` is true; otherwise calls `reply`.
+ * All network or lifecycle errors are silently caught.
+ *
+ * @param interaction - The repliable interaction instance.
+ * @param content - Plain text error or denial message.
+ *
+ * @internal
  */
 export async function safeEphemeralReply(interaction: Repliable, content: string): Promise<void> {
   const payload = { content, flags: MessageFlags.Ephemeral } as const;

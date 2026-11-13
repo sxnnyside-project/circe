@@ -6,23 +6,21 @@ Circe runs natively on Node.js 22.18 or later (the first release that loads `cir
 
 ## 1. Running the Bot
 
-### Installation
-
-```bash
-npm install @sxnnyside/circe discord.js zod
-```
-
 ### Project Scaffolding
 
-Scaffold a complete starter project with configuration, typed schema, sample ping command, and environment template:
+Scaffold a complete starter project in an empty directory with configuration, typed schema, sample ping command, environment template, and `package.json`:
 
 ```bash
-npx circe init
+# Scaffold the project using the scoped package binary
+npx @sxnnyside/circe init --standard
+
+# Install dependencies generated in package.json
+npm install
 ```
 
 ### Local Development
 
-`circe dev` runs under Node via `npx`, watching `scanRoot` and restarting on file changes:
+Once dependencies are installed, `circe dev` runs directly via local `npx`, watching `scanRoot` and restarting on file changes:
 
 ```bash
 npx circe dev
@@ -40,6 +38,15 @@ Validate module contracts and configuration schemas without connecting to Discor
 
 ```bash
 npx circe build
+```
+
+### Pre-flight Diagnostics & Route Inspection
+
+Inspect environment health and command routing:
+
+```bash
+npx circe doctor
+npx circe routes
 ```
 
 ---
@@ -72,8 +79,8 @@ export default defineCirceConfig({
 
 Web Crypto verification uses Node's global `crypto.subtle.verify` with standard Ed25519 support.
 
-> [!NOTE]
-> The SQLite cooldown store (`@sxnnyside/circe/bun-sqlite`) depends on Bun. When deploying on Node, use the default `MemoryCooldownStore` or provide a custom `CooldownStore` implementation.
+> [!TIP]
+> **Universal SQLite on Node.js:** Circe's `SqliteCooldownStore` (`import { SqliteCooldownStore } from "@sxnnyside/circe/sqlite"`) runs natively on Node.js 22.18+ (22.13+ needs no flag; 22.5-22.12 require `--experimental-sqlite`; the API is still marked experimental upstream) utilizing standard library `node:sqlite` (`DatabaseSync`), requiring zero external native compilation or npm dependencies.
 
 ---
 

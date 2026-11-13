@@ -8,6 +8,11 @@ import {
 } from '../../localization/resolver.js';
 import { getCorrelationId, withCorrelationId } from '../../logging/context.js';
 import type { Logger } from '../../logging/logger.js';
+import {
+  emitInteractionMetric,
+  type InteractionTelemetryHandler,
+} from '../../observability/metrics.js';
+import { type ErrorReporter, reportError } from '../../observability/report-error.js';
 import { CommandError } from './errors.js';
 import type { CommandRegistry } from './registry.js';
 import type { AutocompleteContext } from './types.js';
@@ -17,6 +22,10 @@ export interface AutocompleteRouterOptions {
   logger: Logger;
   /** Defaults to a resolver that returns every key verbatim, untranslated. */
   i18n?: LocalizationResolver;
+  /** Called for an error thrown by an autocomplete handler, for external observability reporting. */
+  onError?: ErrorReporter;
+  /** Telemetry callback invoked upon autocomplete completion. */
+  onInteractionComplete?: InteractionTelemetryHandler;
 }
 
 const defaultLocalizationResolver = new IdentityLocalizationResolver();
@@ -45,6 +54,7 @@ export async function handleAutocompleteInteraction(
   interaction: AutocompleteInteraction,
   options: AutocompleteRouterOptions,
 ): Promise<void> {
+  const start = performance.now();
   await withCorrelationId(async () => {
     const correlationId = getCorrelationId();
     const logger = options.logger.child({ command: interaction.commandName, autocomplete: true });
@@ -55,6 +65,19 @@ export async function handleAutocompleteInteraction(
         command: interaction.commandName,
       });
       await respondEmpty(interaction);
+      await emitInteractionMetric(
+        options.onInteractionComplete,
+        {
+          kind: 'autocomplete',
+          name: interaction.commandName,
+          status: 'unknown',
+          durationMs: Math.max(0, performance.now() - start),
+          correlationId,
+          guildId: interaction.guildId ?? null,
+          userId: interaction.user?.id ?? 'unknown',
+        },
+        logger,
+      );
       return;
     }
 
@@ -73,6 +96,19 @@ export async function handleAutocompleteInteraction(
 
     try {
       await command.autocomplete(ctx);
+      await emitInteractionMetric(
+        options.onInteractionComplete,
+        {
+          kind: 'autocomplete',
+          name: interaction.commandName,
+          status: 'success',
+          durationMs: Math.max(0, performance.now() - start),
+          correlationId,
+          guildId: interaction.guildId ?? null,
+          userId: interaction.user?.id ?? 'unknown',
+        },
+        logger,
+      );
     } catch (error) {
       const normalized = normalizeError(
         error,
@@ -94,7 +130,35 @@ export async function handleAutocompleteInteraction(
         error: commandError,
         correlationId: commandError.correlationId,
       });
+      await reportError(
+        options.onError,
+        commandError,
+        {
+          kind: 'autocomplete',
+          name: interaction.commandName,
+          correlationId,
+          timestamp: new Date().toISOString(),
+          guildId: interaction.guildId ?? undefined,
+          channelId: interaction.channelId ?? undefined,
+          userId: interaction.user?.id ?? 'unknown',
+        },
+        logger,
+      );
       await respondEmpty(interaction);
+      await emitInteractionMetric(
+        options.onInteractionComplete,
+        {
+          kind: 'autocomplete',
+          name: interaction.commandName,
+          status: 'error',
+          durationMs: Math.max(0, performance.now() - start),
+          correlationId,
+          guildId: interaction.guildId ?? null,
+          userId: interaction.user?.id ?? 'unknown',
+          error: commandError,
+        },
+        logger,
+      );
     }
   });
 }

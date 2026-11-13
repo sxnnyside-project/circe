@@ -55,6 +55,9 @@ async function startChunkedProxy(backendPort: number): Promise<{ port: number; s
     upstream.on('error', () => {
       outgoing.statusCode = 502;
       outgoing.end();
+      // `pipe` stops reading once the backend is gone; drain the rest so the client's
+      // connection is not left stuck mid-body for its next request.
+      incoming.resume();
     });
     incoming.pipe(upstream);
   });

@@ -8,8 +8,15 @@ import type { CommandRegistry } from '../registry.js';
 import type { CommandContext } from '../types.js';
 import type { CommandGroupDefinition, SubcommandDefinition } from './types.js';
 
+/**
+ * Options accepted by {@link loadCommandGroups}.
+ *
+ * @public
+ */
 export interface LoadCommandGroupsOptions {
+  /** Target registry where assembled commands will be registered. */
   registry: CommandRegistry;
+  /** Component logger for discovery and loading diagnostics. */
   logger: Logger;
 }
 
@@ -250,13 +257,19 @@ function buildExecute(route: Map<string, SubcommandDefinition>) {
 }
 
 /**
- * Discovers every group folder directly under `directory` (each one
- * `command-groups/<name>/`), assembles it into a single Discord command —
- * one `SlashCommandBuilder` with nested subcommands/subcommand groups —
- * and registers it in `registry`, the same registry `loadCommands` writes
- * to. Routing to the right leaf's `execute()` happens inside the
- * assembled command's own `execute`, so the router and Discord
- * registration never need to know a group was ever a folder tree.
+ * Discovers hierarchical command groups under `directory`, assembles each folder
+ * into a single registered Discord command with subcommands, and registers it.
+ *
+ * @remarks
+ * Scans each directory under `directory` (e.g. `src/command-groups/admin/`), reads its `_group.ts`,
+ * attaches leaf subcommands, and constructs a unified `SlashCommandBuilder`.
+ * Routing to the targeted leaf handler happens dynamically based on `options.getSubcommand()`.
+ *
+ * @param directory - Directory path or `file://` URL containing group folders.
+ * @param options - Target registry and logger.
+ * @throws {@link CommandError} If `_group.ts` is missing or a subcommand definition is invalid.
+ *
+ * @public
  */
 export async function loadCommandGroups(
   directory: string | URL,

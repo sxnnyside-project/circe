@@ -51,6 +51,7 @@ export class ConfigError extends CirceError {
    */
   constructor(message: string, options: ConfigErrorOptions) {
     super(message, { ...options, operational: true });
+    this.name = 'ConfigError';
     this.issues = options.issues;
   }
 

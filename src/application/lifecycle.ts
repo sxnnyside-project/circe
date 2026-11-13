@@ -2,14 +2,37 @@ import type { Client } from 'discord.js';
 import { CirceError } from '../errors/circe-error.js';
 import { normalizeError } from '../errors/normalize-error.js';
 
+/**
+ * The discrete operational states of the application runtime.
+ *
+ * @public
+ */
 export type LifecycleState = 'created' | 'starting' | 'running' | 'stopping' | 'stopped';
 
+/**
+ * Callback function executed during startup or shutdown phases.
+ *
+ * @public
+ */
 export type LifecycleHook = () => void | Promise<void>;
 
-/** Runs once the gateway connection is ready, with the logged-in client. */
+/**
+ * Hook executed once the Discord Gateway connection is established, receiving the authenticated client.
+ *
+ * @param client - The active and authenticated discord.js Client instance.
+ *
+ * @public
+ */
 export type ReadyHook = (client: Client) => void | Promise<void>;
 
-/** Rejects an interval that would spin the event loop (`0`, negative, `NaN`, `Infinity`). */
+/**
+ * Asserts that an interval duration is safe to schedule without spinning the event loop.
+ *
+ * @param intervalMs - The duration in milliseconds.
+ * @throws {@link RangeError} When interval is not a positive finite number.
+ *
+ * @internal
+ */
 export function assertIntervalMs(intervalMs: number): void {
   if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
     throw new RangeError(
@@ -18,46 +41,78 @@ export function assertIntervalMs(intervalMs: number): void {
   }
 }
 
-/** Raised for invalid state transitions or hook failures during a phase change. */
+/**
+ * Raised for invalid lifecycle state transitions or hook failures during phase changes.
+ *
+ * @public
+ */
 export class LifecycleError extends CirceError {}
 
 /**
- * A small explicit state machine driving an application through
- * created → start → running → stop → stopped.
+ * Deterministic finite state machine governing application initialization and teardown.
  *
- * There is deliberately no separate `initialize` phase ahead of `start`:
- * every piece of startup wiring (event/command attachment, login,
- * registration) runs from a single `onStart` hook, and a second
- * pre-running phase would only exist for its own sake — dead API surface
- * nothing in the Discord layer needs.
+ * @remarks
+ * **Phase Transitions:**
+ * `created` → `starting` → `running` → `stopping` → `stopped`.
+ *
+ * Startup hooks run in FIFO order (registration order). Stop hooks run in LIFO order
+ * (reverse registration order). If any startup hook throws, all stop hooks for previously
+ * started components are executed to avoid leaking system resources before rethrowing.
+ *
+ * @public
  */
 export class Lifecycle {
   #onCleanupError: ((error: CirceError) => void) | undefined;
   #state: LifecycleState = 'created';
-  #startHooks: LifecycleHook[] = [];
-  #stopHooks: LifecycleHook[] = [];
+  readonly #startHooks: LifecycleHook[] = [];
+  readonly #stopHooks: LifecycleHook[] = [];
 
   /**
-   * `onCleanupError` receives failures from stop hooks that ran because a
-   * start hook threw — the startup error stays the one that propagates.
+   * Creates a new Lifecycle state machine.
+   *
+   * @param options - Configuration options.
+   * @param options.onCleanupError - Callback invoked if a rollback cleanup hook throws during startup failure.
    */
   constructor(options: { onCleanupError?: (error: CirceError) => void } = {}) {
     this.#onCleanupError = options.onCleanupError;
   }
 
+  /**
+   * The current operational phase of the application.
+   */
   get state(): LifecycleState {
     return this.#state;
   }
 
+  /**
+   * Registers a callback to run during {@link start}, in FIFO order.
+   *
+   * @param hook - The initialization callback.
+   */
   onStart(hook: LifecycleHook): void {
     this.#startHooks.push(hook);
   }
 
-  /** Stop hooks run in reverse registration order (last started, first stopped). */
+  /**
+   * Registers a callback to run during {@link stop}, in LIFO order.
+   *
+   * @param hook - The teardown callback.
+   */
   onStop(hook: LifecycleHook): void {
     this.#stopHooks.push(hook);
   }
 
+  /**
+   * Transitions the application from `created` to `running`.
+   *
+   * @remarks
+   * Executes all registered `onStart` hooks sequentially. If any hook fails,
+   * runs all registered `onStop` hooks in reverse order to clean up partial resources,
+   * transitions to `stopped`, and propagates the normalized error.
+   *
+   * @throws {@link LifecycleError} When called from any state other than `created`, or when
+   * {@link stop} was called while the start hooks were still running.
+   */
   async start(): Promise<void> {
     if (this.#state !== 'created') {
       throw new LifecycleError(`Cannot start from state "${this.#state}"`, { operational: true });
@@ -70,9 +125,6 @@ export class Lifecycle {
         await hook();
       }
     } catch (error) {
-      // Earlier start hooks may already hold resources (a database, a
-      // listener). Stop hooks therefore must tolerate a partially started
-      // application; this is the only chance to release what did start.
       for (const hook of [...this.#stopHooks].reverse()) {
         try {
           await hook();
@@ -84,14 +136,24 @@ export class Lifecycle {
       throw normalizeError(error, 'Circe startup failed');
     }
 
+    // A `stop()` that arrived mid-startup already ran the teardown hooks; going on to
+    // `running` would log in a bot whose resources are closed.
+    if (this.#state !== 'starting') {
+      throw new LifecycleError('Stopped during startup', { operational: true });
+    }
+
     this.#state = 'running';
   }
 
   /**
-   * Stops the application. Idempotent: calling `stop()` again once already
-   * stopped resolves immediately without re-running hooks. Every stop hook
-   * runs even if an earlier one throws; failures are collected and raised
-   * together at the end so cleanup is never partially skipped.
+   * Transitions the application to `stopped`.
+   *
+   * @remarks
+   * Idempotent: safe to call repeatedly once stopped. Executes all registered
+   * `onStop` hooks in LIFO order. If any hook throws, remaining hooks continue executing,
+   * and all failures are aggregated into a single {@link LifecycleError}.
+   *
+   * @throws {@link LifecycleError} When one or more stop hooks throw during cleanup.
    */
   async stop(): Promise<void> {
     if (this.#state === 'stopped' || this.#state === 'created') {
@@ -118,5 +180,13 @@ export class Lifecycle {
         metadata: { failures },
       });
     }
+  }
+
+  /**
+   * Supports Explicit Resource Management (`await using lifecycle = new Lifecycle()`).
+   * Calls {@link stop} when exiting the `using` lexical scope.
+   */
+  async [Symbol.asyncDispose](): Promise<void> {
+    await this.stop();
   }
 }

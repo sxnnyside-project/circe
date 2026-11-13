@@ -195,6 +195,44 @@ describe('createInteractionsHandler', () => {
     client.destroy();
   });
 
+  test('rejects a replay of an already dispatched interaction with 409', async () => {
+    const { keyPair, publicKey } = await generateKeyPair();
+    const client = new Client({ intents: [] });
+    let dispatched = 0;
+    client.on(Events.InteractionCreate, () => {
+      dispatched += 1;
+    });
+    const handler = createInteractionsHandler({ client, publicKey, logger });
+    const body = JSON.stringify({
+      id: 'replay-1',
+      application_id: 'app-1',
+      type: 2,
+      data: { id: 'cmd-1', name: 'ping', type: 1 },
+      channel_id: 'channel-1',
+      user: {
+        id: 'user-1',
+        username: 'tester',
+        discriminator: '0',
+        global_name: null,
+        avatar: null,
+      },
+      token: 'interaction-token',
+      version: 1,
+      app_permissions: '0',
+      locale: 'en-US',
+      entitlements: [],
+      authorizing_integration_owners: {},
+    });
+
+    const first = await handler(await signedRequest(keyPair, body));
+    const second = await handler(await signedRequest(keyPair, body));
+
+    expect(first.status).toBe(202);
+    expect(second.status).toBe(409);
+    expect(dispatched).toBe(1);
+    client.destroy();
+  });
+
   test('rejects a correctly signed request whose timestamp is stale with 401', async () => {
     const { keyPair, publicKey } = await generateKeyPair();
     const client = new Client({ intents: [] });

@@ -1,6 +1,6 @@
 # Circe
 
-![Version](https://img.shields.io/badge/version-1.1.0-orange)
+![Version](https://img.shields.io/badge/version-1.2.0-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
 [![CI](https://github.com/sxnnyside-project/circe/workflows/CI/badge.svg)](https://github.com/sxnnyside-project/circe/actions)
 
@@ -36,20 +36,23 @@ This is a Sxnnyside Project, part of the ecosystem's shared infrastructure.
 
 ## Features
 
-- **Inversion of Control CLI**: The `circe` binary owns project scaffolding (`circe init`), startup, hot-reloading development (`circe dev`), production execution (`circe start`), and CI pre-flight contract verification (`circe build`).
-- **File-System Conventions**: Automatic discovery for `commands/`, `command-groups/`, `context-menus/`, `events/`, `components/`, and `modals/` with scan-time shape validation.
+- **Inversion of Control CLI Suite**: The `circe` binary owns project scaffolding (`circe init`), startup, hot-reloading development (`circe dev`), production execution (`circe start`), CI contract verification (`circe build`), diagnostic health checks (`circe doctor`), interactive route inspection (`circe routes`), and convention-driven code generation (`circe add`).
+- **File-System Conventions**: Automatic discovery for `commands/`, `command-groups/`, `context-menus/`, `events/`, `components/`, and `modals/` with compile-time shape validation and single-file hooks (`middleware.ts`, `error.ts`, `localization.ts`).
 - **Dual-Transport Architecture**: Switch seamlessly between WebSocket Gateway, stateless HTTP Webhooks, or hybrid mode directly in `circe.config.ts`.
 - **Sub-Millisecond Ed25519 Web Crypto**: Zero-dependency request signature verification using native `crypto.subtle.verify` on Bun, Node.js 22+, and Deno.
+- **Universal Multi-Runtime SQLite**: Native `bun:sqlite` under Bun and standard library `node:sqlite` (`DatabaseSync`) under Node.js 22.18+ and Deno 2.2+ via `@sxnnyside/circe/sqlite`.
 - **Hierarchical Subcommand Routing**: Automatic nested command tree assembly up to Discord's two-level limit with inherited group-level guards and unified tracing.
 - **Typed Component Routes & Pagination**: Expressive URL-style route patterns (`pattern: "ticket:close:[ticketId]:[action]"`) with full type inference, plus collector-free pagination (`createPaginator`) with optional dropdown navigation (`pageSelect`).
-- **Enterprise Observability & Guards**: Built-in composable `cooldown()` guards (memory or SQLite), correlation IDs via `AsyncLocalStorage`, and global `onError` error reporting.
+- **Explicit Resource Management (ERM)**: Native `Symbol.asyncDispose` on `createCirce()` and `Symbol.dispose` on stores for clean deterministic scoping (`await using app = createCirce(...)`).
+- **Enterprise Observability & Golden Signals**: Built-in composable `cooldown()` guards, `AsyncLocalStorage` correlation IDs, error telemetry (`onError`), and sliding-window latency statistics (`onInteractionComplete`).
 
 ## Installation
 
 ### Prerequisites
 
 - [Bun](https://bun.sh) (`>=1.4.0`), [Node.js](https://nodejs.org) (`>=22.18.0`, the first release that runs TypeScript natively), or [Deno](https://deno.com) (`>=2.0.0`)
-- `discord.js` (`^14.16.0`) peer dependency
+- `discord.js` (`^14.16.0 || ^14.28.0`) peer dependency
+- `zod` (`^3.24.0 || ^4.0.0`) peer dependency
 
 ### Package Managers
 
@@ -121,8 +124,19 @@ export default defineCommand({
 Run the bot via the Circe CLI:
 
 ```bash
-# Scaffold a new project starter
-bun x circe init
+# Scaffold a new project starter in an empty folder (Bun, Node, or Deno)
+bun x @sxnnyside/circe init --standard
+# Or with Node.js:
+npx @sxnnyside/circe init --standard
+
+# Run pre-flight health diagnostics
+bun x circe doctor
+
+# Inspect discovered command routes and component patterns
+bun x circe routes
+
+# Scaffold a new command, event, component, or modal
+bun x circe add command ban --description "Bans a user" --guild-only
 
 # Development with hot-reload on file changes
 bun x circe dev

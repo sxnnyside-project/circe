@@ -7,8 +7,15 @@ import { discoverModules } from '../module-loader.js';
 import type { ContextMenuCommandRegistry } from './registry.js';
 import type { MessageCommandDefinition, UserCommandDefinition } from './types.js';
 
+/**
+ * Options for configuring context menu command discovery and loading.
+ *
+ * @public
+ */
 export interface LoadContextMenuCommandsOptions {
+  /** The target context menu command registry to register discovered modules into. */
   registry: ContextMenuCommandRegistry;
+  /** Logger used to report discovery diagnostics and debug messages. */
   logger: Logger;
 }
 
@@ -31,12 +38,20 @@ function validateContextMenuCommandShape(value: unknown): string[] {
 }
 
 /**
- * Discovers user and message context menu commands under the fixed
- * `users/` and `messages/` subfolders of `directory` — this split isn't
- * cosmetic, it determines which interaction type each command registers
- * as (see folder-conventions.md, Section 3.3). Every malformed or
- * unimportable file across both subfolders is aggregated into one
- * `ModuleValidationError`, mirroring every other category loader.
+ * Discovers user and message context menu commands under the subfolders `users/` and `messages/`.
+ *
+ * @remarks
+ * This subfolder split determines which interaction command type each definition registers as:
+ * - Files in `users/` are loaded as {@link UserCommandDefinition} instances.
+ * - Files in `messages/` are loaded as {@link MessageCommandDefinition} instances.
+ *
+ * All malformed or unimportable files across both directories are aggregated into a single
+ * {@link ModuleValidationError} rather than failing on the first error.
+ *
+ * @param directory - Base directory or file URL containing `users/` and `messages/` subfolders.
+ * @param options - Registry and logger options.
+ * @throws {@link ModuleValidationError} If any module fails import or violates the context menu definition shape.
+ * @public
  */
 export async function loadContextMenuCommands(
   directory: string | URL,

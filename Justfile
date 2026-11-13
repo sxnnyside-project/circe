@@ -60,6 +60,10 @@ build-deno:
     deno task build
     deno task smoke
 
+# Verify all scaffold templates across runtimes and tiers.
+verify-templates: build
+    bun test tests/templates/templates-verification.test.ts
+
 # Remove build artifacts.
 clean:
     bun run clean

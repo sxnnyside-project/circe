@@ -15,24 +15,39 @@ import { CommandError } from './errors.js';
 import type { CommandDefinition } from './types.js';
 
 /**
- * The minimal shape Circe needs from a REST client to register commands.
- * `discord.js`'s own `REST` instance satisfies this — it's declared
- * separately so registration can be unit tested with a plain stub instead
- * of a real client or a mock-Discord library.
+ * Minimal contract required from a Discord REST client to deploy application commands.
+ *
+ * @public
  */
 export interface CommandRest {
+  /**
+   * Performs an HTTP PUT request to Discord REST API.
+   *
+   * @param route - The target Discord API route.
+   * @param options - Request options payload.
+   */
   put(route: string, options: { body: unknown }): Promise<unknown>;
 }
 
+/**
+ * Options accepted by {@link registerCommands}.
+ *
+ * @public
+ */
 export interface RegisterCommandsOptions {
+  /** REST client implementation used for command registration. */
   rest: CommandRest;
+  /** Application Client ID from the Discord Developer Portal. */
   clientId: string;
-  /** Guild-scoped registration when present (dev/staging); global otherwise (production). */
+  /** Target guild ID for instant dev/staging registration; omitted for global production rollout. */
   guildId?: string;
+  /** Array of slash commands to deploy. */
   commands: readonly CommandDefinition[];
-  /** Context menu commands are registered in the same bulk `PUT` — Discord's endpoint accepts all command types together. */
+  /** Array of user context menu commands to include in bulk deploy. */
   userContextMenuCommands?: readonly UserCommandDefinition[];
+  /** Array of message context menu commands to include in bulk deploy. */
   messageContextMenuCommands?: readonly MessageCommandDefinition[];
+  /** Logger instance for registration diagnostics. */
   logger: Logger;
 }
 
@@ -57,10 +72,16 @@ function buildContextMenu(
 }
 
 /**
- * Bulk-replaces the application's registered commands with the current
- * registry contents. No diffing — a full `PUT` is what Discord's own API
- * expects for this operation, and it's deterministic: the registered set
- * always matches exactly what's loaded, with nothing stale left behind.
+ * Bulk-registers all slash commands and context menu commands with Discord via a single HTTP `PUT`.
+ *
+ * @remarks
+ * Overwrites Discord's command list with the exact loaded registry contents, guaranteeing
+ * deterministic deployments with zero stale or ghost commands left behind.
+ *
+ * @param options - Registration settings, commands list, and REST client.
+ * @throws {@link CommandError} If Discord rejects the registration payload.
+ *
+ * @public
  */
 export async function registerCommands(options: RegisterCommandsOptions): Promise<void> {
   const body: RESTPostAPIApplicationCommandsJSONBody[] = [

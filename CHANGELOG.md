@@ -7,52 +7,101 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased]
+## [1.2.0] — 2026-11-13
 
 ### Added
 
-- Universal SQLite persistence subpath (`@sxnnyside/circe/sqlite`) exposing `SqliteCooldownStore`:
-  - Supports native `bun:sqlite` under Bun and standard library `node:sqlite` (`DatabaseSync`) under Node 22.5+, Node 24+, and Deno 2+ with zero external npm dependencies.
-  - Automatically enables WAL mode (`PRAGMA journal_mode = WAL`) on disk databases.
-  - Precompiles prepared statements once at initialization for high throughput.
+- **Universal Multi-Runtime SQLite Persistence (`@sxnnyside/circe/sqlite`)**:
+  - Implements `SqliteCooldownStore` with native zero-copy `bun:sqlite` under Bun and standard library `node:sqlite` (`DatabaseSync`) under Node.js 22.18+, Node.js 24+, and Deno 2.2+ without third-party npm dependencies.
+  - Automatically enables Write-Ahead Logging (`PRAGMA journal_mode = WAL`) on disk databases.
+  - Precompiles prepared SQL statements at initialization for high throughput.
   - Implements `Symbol.dispose` for ECMAScript Explicit Resource Management (`using store = new SqliteCooldownStore()`).
-- Modern localization subsystem under `src/localization/`:
-  - `DiscordLocale` union supporting all 34 Discord official locales with string dialect fallback.
+  - Maintains full backward compatibility via `@sxnnyside/circe/bun-sqlite` and `BunSqliteCooldownStore` proxies.
+- **Modern Discord Localization Subsystem (`src/localization/`)**:
+  - `DiscordLocale` union covering all 32 official Discord locales with dialect string fallback.
   - `LocalizationContext`, `LocalizationResolver`, `defineLocalizationResolver`, `localizationContextOf`, and `createTranslator`.
-  - `@experimental` `resolveInteractionLocale()` with configurable user vs. guild priority and fallback chains.
+  - `@experimental` `resolveInteractionLocale()` with configurable user-vs-guild resolution priority and fallback chains.
   - `@experimental` zero-dependency token interpolator `interpolate()`.
-  - Added `nameLocalizations` and `descriptionLocalizations` support in `_group.ts` for hierarchical command groups and subcommands.
-- Runtime and platform introspection:
-  - Exported `detectRuntime()` and `Runtime` (`'bun' | 'node' | 'deno'`) in `@sxnnyside/circe` for zero-overhead global introspection.
-  - Exported `createWatcher()` and `Watcher` interface.
-- Decoupled environment configuration:
-  - `src/config/env-config.ts` (`defineEnvConfig`, `EnvConfig`, `SafeParseSchema`) allowing any validator implementing `safeParse` (Zod, Valibot, ArkType, Standard Schema v1).
+  - First-class support for `nameLocalizations` and `descriptionLocalizations` in hierarchical command group metadata (`_group.ts`).
+  - Scans for `localization.ts` by default at the project scan root, with transparent fallback to legacy `i18n.ts`.
+- **Symmetric Entry Points & Modular Subpaths**:
+  - Canonical 5-entrypoint architecture in `package.json#exports` (`.`, `./testing`, `./cli`, `./sqlite`, `./bun-sqlite`).
+  - Added root entry points `src/testing.ts` and `src/cli.ts` mirroring `src/sqlite.ts` and `src/bun-sqlite.ts`.
+  - Exported `detectRuntime()` and `Runtime` (`'bun' | 'node' | 'deno'`) at the root entry point for zero-overhead environment introspection.
+  - Reorganized and alphabetized barrel exports in `src/index.ts` with descriptive architectural section banners.
+- **Developer Tooling Suite & Modular CLI Architecture (`src/cli/`)**:
+  - Decomposed CLI into single-responsibility command modules (`add.ts`, `build.ts`, `completions.ts`, `dev.ts`, `doctor.ts`, `help.ts`, `init.ts`, `routes.ts`, `start.ts`, `version.ts`) orchestrated by a lightweight dispatcher.
+  - Relocated non-command internals to their canonical architectural layers: `src/application/prepare-app.ts` (IoC application preparation and scanning), `src/config/dotenv.ts` (environment loading), and `src/errors/render-error.ts` (terminal error presentation), removing obsolete internal shims and deleting the unused `src/commands/` directory.
+  - `circe init`: Real template-driven project scaffolding from root `templates/` across Bun, Deno, and Node.js in three complexity tiers (`minimal`, `standard`, `advanced`), with CLI flags (`--runtime`, `--template`, `--minimal`, `--standard`, `--advanced`) and host environment auto-detection.
+  - `circe doctor`: Pre-flight diagnostic command checking runtime engine floors (Bun >= 1.4.0, Node >= 22.18.0, Deno >= 2.0.0), configuration validity, credential security, and dependency alignment, with `--json` output.
+  - `circe routes`: Interactive route inspection command listing slash commands, subcommands, context menus, modals, component prefixes/patterns, and prefix tree collision analysis, with `--json` output.
+  - `circe add`: Interactive and flagged code generator for commands (`--guild-only`, `--description`), events (`--once`, Discord enum mapping), components (`--prefix`, `--pattern`), modals, and guards.
+  - Zero-dependency "Did you mean ...?" command typo suggestions using Levenshtein distance on usage errors.
+  - ANSI-styled `--help` output with colors and dim annotations respecting `NO_COLOR` and non-interactive environments.
+- **Interaction Testing Harness 2.0 (`@sxnnyside/circe/testing`)**:
+  - `TestExecutionResult` returned by `testCommand()`, `testComponent()`, `testModal()`, and `testContextMenu()` with fluent inspection assertions (`reply`, `followUp`, `hasReply()`, `hasEphemeralReply()`, `hasFollowUp()`, `hasModal()`, `hasLog()`, `isDeferred`, `isReplied`).
+  - Comprehensive slash command option resolution on `createTestInteraction()`: `getString()`, `getInteger()`, `getNumber()`, `getBoolean()`, `getUser()`, `getMember()`, `getChannel()`, `getRole()`, `getMentionable()`, `getAttachment()`, and `get()`, enforcing required option constraints.
+  - Asynchronous interaction lifecycle simulation: `deferReply()`, `editReply()`, `deleteReply()`, and modal inspection via `showModal()`.
+  - Select menu testing in `createTestComponentInteraction()` with `values` arrays, `deferUpdate()`, and `hasUpdate()` assertions.
+  - Dedicated `testAutocomplete()` utility and `TestAutocompleteResult` with `hasChoice()` verification.
+  - `testGuard()` helper for unit testing authorization and rate-limiting guards in isolation.
+  - Strongly-typed Discord object stub builders: `createMockUser()`, `createMockMember()`, `createMockGuild()`, `createMockChannel()`, and `createMockMessage()` with `MockOverrides<T>` support.
+- **Observability, Golden Signals & Decoupled Configuration**:
+  - Interaction latency telemetry: `InteractionMetric`, `InteractionMetricKind`, `InteractionMetricStatus`, `InteractionTelemetryHandler`, `LatencyAccumulator`, and `createLatencyAccumulator()` computing sliding-window p50, p95, p99 percentiles, throughput, error rates, and guard denial counts.
+  - `onInteractionComplete` lifecycle hook wired across commands, subcommands, components, modals, context menus, and autocompletes, isolated via `emitInteractionMetric()`.
+  - Decoupled environment validation via `defineEnvConfig` and `SafeParseSchema`, supporting Zod 3, Zod 4, Valibot, ArkType, or any Standard Schema v1 implementation.
   - TypeScript discriminated union on `CirceConfigFile` enforcing `http: { publicKey }` at compile time when `transport` is `'http'` or `'hybrid'`.
-- Extensible integration health probes:
-  - Added `ctx.addHealthCheck(name, check)` to `CirceIntegrationContext`, allowing extensions to register named `/ready` checks without manual wiring.
-- Health probe type ergonomics:
-  - Exported `HealthProbeStatus` and `HealthProbeResponse` describing `/health` and `/ready` structured responses.
-- Framework-wide TSDoc parity:
-  - Comprehensive TSDoc documentation (`@remarks`, `@param`, `@returns`, `@example`, `@defaultValue`, `@throws`, `@see`, `@public`, `@internal`, `@experimental`, `@deprecated`) normalized across `sqlite`, `transport`, `runtime`, `observability`, `logging`, `localization`, `health`, `config`, and `errors`.
-- Root entry point symmetry:
-  - Mapped root `src/` to strictly 5 canonical entry points matching `package.json#exports` (`index.ts`, `testing/index.ts`, `cli/index.ts`, `sqlite.ts`, `bun-sqlite.ts`).
+  - Added `ctx.addHealthCheck(name, check)` to `CirceIntegrationContext`, enabling integrations to contribute named `/ready` checks without manual wiring.
+- **Application & Discord Layer Modernization (2026 Standards)**:
+  - Full TSDoc parity across all 42 files in `src/discord/` and all files in `src/application/` (`@public`, `@internal`, `@remarks`, `@param`, `@returns`, `@throws`, `@example`).
+  - Explicit Resource Management support: implemented `Symbol.asyncDispose` on `Lifecycle` and `CirceApp` (`createCirce()`), and `Symbol.dispose` on `MemoryCooldownStore` and `MemoryPaginationStore`.
+  - Resilient event dispatcher (`createEventHandler`) with correlation tracking, normalized `EventError` boundaries, and isolated per-listener failure reporting.
+  - Option autocomplete error boundary with safe fallback response (`interaction.respond([])`).
+  - Ephemeral reply safety (`safeEphemeralReply`) using `MessageFlags.Ephemeral` with automatic absorption on expired interactions.
+- **Continuous Integration Template Quality Gates**:
+  - Automated test suite in `tests/templates/templates-verification.test.ts` verifying contract compliance across all 9 template permutations (Bun, Deno, Node in minimal, standard, advanced).
+  - Added `just verify-templates` recipe executing automated template generation and contract validation in continuous integration.
+- **AI-native experience**:
+  - `circe manifest` writes `.circe/project.json`, a declarative summary of the bot's transport, intents, conventions and routes; `circe manifest --check` fails when it is stale.
+  - Official agent skills in `.agents/skills/`, scaffolded by `circe init`, with the exact operating contract for code assistants.
+  - `--format json` (alongside `--json`) on the CLI: failures are one structured document with `category`, `issues` and a stable exit code.
+- **Atomic cooldowns**: optional `CooldownStore.claim(key, durationMs)` takes a cooldown only if the key is free, in one step. Implemented by `MemoryCooldownStore` and `SqliteCooldownStore` (one conditional upsert, safe across processes sharing the file); the `cooldown()` guard uses it when present and falls back to `check` then `hit` for stores without it.
+- **Multi-process paginator**: sessions are plain JSON (`SerializedPaginatorPage`, `PaginationSession.idleUntil`), `PaginationStore` may be asynchronous, and `PaginatorPage.embeds` accepts API embed objects. Replicas that share a store can serve each other's clicks, and an idle timer never disables a pager another process kept alive.
+- **Replay protection** in the HTTP transport: a signed interaction whose `id` was already dispatched inside the freshness window is rejected with `409`.
+- `prepareApp(cwd, logger, { inspectOnly: true })` discovers modules without reading the environment schema; `circe routes` and `circe manifest` use it, so they run in CI without secrets.
+- Autocomplete errors reach the `onError` reporter (`ErrorReportKind` gains `'autocomplete'`).
+- CLI value options accept `--name=value`, and a flag is never taken as the value of the option before it.
 
 ### Changed
 
+- Command, component, modal and context-menu routers share one pipeline (`src/discord/run-interaction.ts`); behavior and public API are unchanged.
+- An error thrown by `middleware.after` is logged instead of replacing the interaction's outcome.
+- `circe add` scaffolds reply with `flags: MessageFlags.Ephemeral` instead of the deprecated `ephemeral: true`, and so do the project templates.
+- `EnvConfig` takes a second type parameter for its schema, so `CirceConfig<Schema>.schema` keeps its declared type as in 1.1 (`defineEnvConfig` and `defineConfig` return it typed).
+- Modernized core dependencies: upgraded `zod` to stable `4.6.7`, `@types/bun` to `1.4.4` (aligned with Bun 1.4 runtime engine), and `discord.js` to `14.28.1`.
+- Added test coverage in `tests/config/config.test.ts` for Zod 4 schemas with transforms and coercions, and configured CI (`.github/workflows/ci.yml`) to test both the declared floor (`peer-zod-3: zod@^3.24.0`) and the primary Zod 4 suite.
 - Consolidated legacy `i18n` into `src/localization/resolver.ts`, exposing backward-compatible proxies (`I18nResolver`, `I18nContext`, `IdentityI18nResolver`, `defineI18nResolver`, `i18nContextOf`) marked as `@deprecated`.
-- The CLI scanner now looks for `localization.ts` first at the scan root, with seamless fallback to `i18n.ts`.
 - `src/config/config.ts` re-exports from `./env-config.js` with `@deprecated`.
-- `src/bun-sqlite.ts` and `src/discord/guards/cooldown/bun-sqlite-store.ts` are backward-compatible proxies pointing to universal `SqliteCooldownStore` with driver `'bun'` by default.
-- Consolidated observability types into `src/observability/report-error.ts` to reduce file fragmentation.
+- Consolidated observability types into `src/observability/report-error.ts` to eliminate file fragmentation.
 
 ### Fixed
 
+- `circe dev` restarts the bot on every change, not only the first.
+- A bot-supplied error, guard-denied or unknown-interaction handler that throws is logged instead of becoming an unhandled rejection that shuts the bot down.
+- A `stop()` during slow `onStart` hooks no longer lets startup continue to `running` and log in; `start()` rejects.
+- `circe add guard` scaffolds a guard that allows (`return true`), and `circe add` escapes quotes in descriptions, prefixes and event names.
+- Paginator pages without text no longer keep the text of the previous page.
+- The Node HTTP bridge answers `413` to an oversized chunked body instead of resetting the connection.
+- `circe doctor` agrees with `circe start` on the HTTP public key and reads the token through the bot's own schema.
+- `circe routes` output order no longer depends on the machine's locale.
 - `CirceError.toJSON()` uses a `WeakSet<object>` to prevent stack overflow on circular error causes (`[CircularCause]`).
 - `CirceError.toJSON()` handles native `JSON.stringify` parameter passing (`key: string` as first argument).
 - `CirceError.toJSON()` recursively preserves child errors inside `AggregateError.errors`.
 - `CirceError.toJSON()` and metadata serialization safely coerce Discord snowflake BigInt values to string, preventing `TypeError: Do not know how to serialize a BigInt`.
 - `normalizeError()` annotates `originalName: value.name` in metadata when wrapping native errors (`TypeError`, `SyntaxError`), preventing loss of error class in APM/observability tools.
 - Deno file watcher descriptor leak: `createWatcher().stop()` now explicitly invokes `watcher.close()` under Deno.
+
+---
 
 ## [1.1.0] — 2026-10-14
 
@@ -102,6 +151,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `createPaginator().reply()` throws a clear error for an empty page list.
 - `/ready` reuses its check results for one second.
 - `build` removes `dist/` first, and no longer ships declaration maps that pointed to unpublished sources.
+
+---
 
 ## [1.0.0] — 2026-09-09
 
@@ -163,6 +214,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/circe/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/circe/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/sxnnyside-project/circe/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/sxnnyside-project/circe/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/sxnnyside-project/circe/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/sxnnyside-project/circe/releases/tag/v0.1.0

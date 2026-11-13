@@ -207,7 +207,7 @@ export const paginator = createPaginator({
 });
 ```
 
-> **One process.** A session keeps live `EmbedBuilder` objects in the process that created it. With the HTTP transport behind several replicas, a click that lands on another replica finds no session and shows the expired pager. Route a message's clicks to the same replica (sticky sessions), or supply a `PaginationStore` that serializes pages to JSON and rebuilds the embeds.
+> **Several processes.** A session is plain JSON (embeds are stored as API objects), so with the HTTP transport behind several replicas, a click may land on any of them as long as they share a `PaginationStore` that can hold JSON (Redis, a database). The default `MemoryPaginationStore` lives in one process, so replicas need a shared store or sticky routing.
 
 #### Registering the Paginator Component
 

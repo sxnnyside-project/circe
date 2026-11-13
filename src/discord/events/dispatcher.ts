@@ -8,12 +8,20 @@ import type { EventRegistry } from './registry.js';
 import type { EventDefinition } from './types.js';
 
 /**
- * Wraps an event's handler with correlation context and error isolation.
- * Exposed separately from `attachEvents` so a handler's behavior can be
- * unit tested by invoking it directly with plain arguments, without a live
- * client. This is the per-listener isolation guarantee: one handler
- * throwing never prevents other listeners (for this event or any other)
- * from running.
+ * Creates an event listener wrapper providing correlation context and per-listener error isolation.
+ *
+ * @remarks
+ * Exposed separately from {@link attachEvents} so that handler behavior can be tested in isolation
+ * without requiring a live Discord client connection.
+ * Any unhandled error during event execution is normalized, logged with its correlation ID,
+ * and forwarded to the optional error reporter without crashing the application process.
+ *
+ * @typeParam EventName - The Discord.js client event name.
+ * @param event - The event definition to wrap.
+ * @param logger - Logger instance for operational diagnostics.
+ * @param onError - Optional error reporting callback.
+ * @returns An event handler function ready to attach to an `EventEmitter`.
+ * @public
  */
 export function createEventHandler<EventName extends keyof ClientEvents>(
   event: EventDefinition<EventName>,
@@ -55,7 +63,20 @@ export function createEventHandler<EventName extends keyof ClientEvents>(
   };
 }
 
-/** Wires every registered event onto a live discord.js client. discord.js's own emitter remains the event bus. */
+/**
+ * Attaches every registered event listener onto a live Discord.js client.
+ *
+ * @remarks
+ * Respects the `once` flag on {@link EventDefinition}, calling `client.once()` for one-time
+ * listeners and `client.on()` for recurring listeners. Discord.js's native EventEmitter remains
+ * the underlying event bus.
+ *
+ * @param client - The target Discord.js client instance.
+ * @param registry - Registry containing the loaded event definitions.
+ * @param logger - Logger instance.
+ * @param onError - Optional error reporting callback.
+ * @public
+ */
 export function attachEvents(
   client: Client,
   registry: EventRegistry,

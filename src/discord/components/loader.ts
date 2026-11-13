@@ -4,8 +4,15 @@ import { discoverModules } from '../module-loader.js';
 import type { ComponentRegistry } from './registry.js';
 import type { ComponentDefinition } from './types.js';
 
+/**
+ * Options accepted by {@link loadComponents}.
+ *
+ * @public
+ */
 export interface LoadComponentsOptions {
+  /** Target registry where validated component handlers will be stored. */
   registry: ComponentRegistry;
+  /** Component logger for discovery and loading diagnostics. */
   logger: Logger;
 }
 
@@ -28,11 +35,17 @@ function validateComponentShape(value: unknown): string[] {
 }
 
 /**
- * Recursively discovers component modules under `directory` — category
- * subfolders included — imports each one, validates its default export,
- * and registers it. Mirrors `loadCommands`/`loadEvents`: every malformed
- * or unimportable file is aggregated into one `ModuleValidationError`
- * rather than stopping at the first one.
+ * Recursively scans, imports, validates, and registers component handler modules from disk.
+ *
+ * @remarks
+ * Gathers all malformed shapes and unimportable modules into a single {@link ModuleValidationError}
+ * so all component declaration issues are reported together.
+ *
+ * @param directory - Directory path or `file://` URL containing component files.
+ * @param options - Target registry and logger.
+ * @throws {@link ModuleValidationError} If any scanned module fails shape validation or throws during import.
+ *
+ * @public
  */
 export async function loadComponents(
   directory: string | URL,

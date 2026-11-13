@@ -113,8 +113,10 @@ function nodeRequestToWebRequest(request: IncomingMessage): Promise<Request> {
     request.on('data', (chunk: Buffer) => {
       received += chunk.length;
       if (received > MAX_REQUEST_BODY_BYTES) {
+        // Stop buffering but keep the socket: destroying it here would cut off the 413 reply.
+        chunks.length = 0;
+        request.removeAllListeners('data');
         reject(new RequestBodyTooLargeError());
-        request.destroy();
         return;
       }
       chunks.push(chunk);
@@ -159,8 +161,9 @@ export function createNodeInteractionsServer(
       .then((webResponse) => writeWebResponseToNode(webResponse, response))
       .catch((error: unknown) => {
         if (error instanceof RequestBodyTooLargeError) {
-          response.statusCode = 413;
-          response.end();
+          // The rest of the oversized body is never read, so the connection cannot be reused.
+          response.writeHead(413, { Connection: 'close' });
+          response.end(() => request.destroy());
           return;
         }
         options.logger.error('Interactions server request failed', { error });

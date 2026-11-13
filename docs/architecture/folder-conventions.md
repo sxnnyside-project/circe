@@ -36,11 +36,13 @@ Circe governs filesystem conventions within `scanRoot` (default: `./src`). Every
     ├── guards/             # Reusable command & component guards
     ├── middleware.ts       # Global execution hooks (before / after)
     ├── error.ts            # Centralized error boundary & reply overrides
-    └── i18n.ts             # Pluggable interaction translation resolver
+    └── localization.ts     # Modern interaction translation resolver (or legacy i18n.ts)
 ```
 
 > [!TIP]
-> Run `circe init` (`bun x circe init` / `npx circe init`) in an empty directory to automatically scaffold the base starter structure (`circe.config.ts`, `src/config.ts`, `src/commands/ping.ts`, `.env.example`, and `.gitignore`).
+> - Scaffold starter structures with `circe init --runtime bun|deno|node --template minimal|standard|advanced`.
+> - Generate new commands, events, components, modals, and guards using `circe add`.
+> - Inspect the discovered route hierarchy and collision report using `circe routes`.
 
 ---
 
@@ -133,22 +135,22 @@ components/
 
 ### 3.6 `modals/` — Modal Submit Handlers
 
-Modal handlers match `customId` values exactly:
+Modal handlers match `customId` values via longest-prefix matching (mirroring component prefix resolution):
 
 ```
 modals/
-└── feedback-form.ts        → customId: "feedback-modal"
+└── feedback.ts             → prefix: "feedback:" (matches "feedback:submit", "feedback:v2:123")
 ```
 
 ---
 
-### 3.7 `middleware.ts`, `error.ts`, and `i18n.ts`
+### 3.7 `middleware.ts`, `error.ts`, and `localization.ts` (or `i18n.ts`)
 
 Optional single-file conventions discovered at the scan root:
 
 - **`middleware.ts`**: Exports global `before` and `after` hooks wrapping command and interaction execution.
 - **`error.ts`**: Exports centralized error formatting and fallback replies when commands fail.
-- **`i18n.ts`**: Exports an `I18nResolver` implementation providing translations for `ctx.t(key, params)` based on `interaction.locale`. `resolve(key, locale, params, context)` also receives an `I18nContext` (`guildId`, `guildLocale`, `userId`), so a per-guild or per-user fallback chain needs no ids smuggled through `params`.
+- **`localization.ts`** (or fallback **`i18n.ts`**): Exports a `LocalizationResolver` (or `I18nResolver`) implementation providing translations for `ctx.t(key, params)` based on `interaction.locale`. `resolve(key, locale, params, context)` receives a `LocalizationContext` (`guildId`, `guildLocale`, `userId`), allowing per-guild or per-user fallback chains without smuggling IDs through params.
 
 ---
 

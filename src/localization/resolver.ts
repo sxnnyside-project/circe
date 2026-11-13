@@ -2,7 +2,7 @@ import type { Locale, LocaleString, LocalizationMap } from 'discord.js';
 
 /**
  * Union of official Discord locales and custom BCP-47 language tags.
- * Provides full IDE autocomplete for Discord's 34 standard locales while allowing custom dialect tags.
+ * Provides full IDE autocomplete for Discord's 32 official locales while allowing custom dialect tags.
  *
  * @public
  */
@@ -266,7 +266,8 @@ export function interpolate(template: string, params?: Record<string, unknown>):
     return template;
   }
   return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (match, key: string) => {
-    const value = params[key];
+    // Own keys only: `{constructor}` must not resolve to an inherited Object member.
+    const value = Object.hasOwn(params, key) ? params[key] : undefined;
     return value !== undefined ? String(value) : match;
   });
 }

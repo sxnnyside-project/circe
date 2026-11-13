@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { BunSqliteCooldownStore } from '../../../../src/discord/guards/cooldown/bun-sqlite-store.js';
+import { BunSqliteCooldownStore } from '../../../../src/sqlite/cooldown-store.js';
 
 describe('BunSqliteCooldownStore', () => {
   test('check returns 0 for a key that was never hit', () => {

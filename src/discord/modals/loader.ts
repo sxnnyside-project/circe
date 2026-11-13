@@ -4,8 +4,15 @@ import { discoverModules } from '../module-loader.js';
 import type { ModalRegistry } from './registry.js';
 import type { ModalDefinition } from './types.js';
 
+/**
+ * Options for configuring modal handler discovery and loading.
+ *
+ * @public
+ */
 export interface LoadModalsOptions {
+  /** The target modal registry to register discovered modules into. */
   registry: ModalRegistry;
+  /** Logger used to report discovery diagnostics and debug messages. */
   logger: Logger;
 }
 
@@ -28,11 +35,16 @@ function validateModalShape(value: unknown): string[] {
 }
 
 /**
- * Recursively discovers modal modules under `directory` — category
- * subfolders included — imports each one, validates its default export,
- * and registers it. Mirrors `loadComponents`/`loadCommands`/`loadEvents`:
- * every malformed or unimportable file is aggregated into one
- * `ModuleValidationError` rather than stopping at the first one.
+ * Recursively discovers modal modules under `directory`, imports each one, validates its default export, and registers it.
+ *
+ * @remarks
+ * Every malformed or unimportable file is aggregated into a single {@link ModuleValidationError}
+ * rather than stopping at the first failure.
+ *
+ * @param directory - Base directory or file URL containing modal definition files.
+ * @param options - Registry and logger options.
+ * @throws {@link ModuleValidationError} If any module fails import or violates the modal definition shape.
+ * @public
  */
 export async function loadModals(
   directory: string | URL,

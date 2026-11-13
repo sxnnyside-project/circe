@@ -13,80 +13,129 @@ import type { Translator } from '../../localization/resolver.js';
 import type { Logger } from '../../logging/logger.js';
 
 /**
- * The subset of discord.js's slash command builders a command can use.
- * All three still expose `.name` and `.toJSON()`, which is all Circe needs.
+ * Union of discord.js slash command builder variants supported by Circe.
+ *
+ * @public
  */
 export type CommandBuilder =
   | SlashCommandBuilder
   | SlashCommandOptionsOnlyBuilder
   | SlashCommandSubcommandsOnlyBuilder;
 
-/** `true` to allow execution; a string denial reason to block it. */
+/**
+ * The outcome of a guard evaluation: `true` to permit execution, or a string denial reason.
+ *
+ * @public
+ */
 export type GuardResult = true | string;
 
 /**
- * A composable precondition run before a command executes. Circe ships the
- * mechanism (`guildOnly`, `hasPermission`); the bot supplies the policy
- * (which permissions, which roles count as staff, etc.).
+ * A composable precondition evaluated before a command executes.
+ *
+ * @param ctx - The execution context for the incoming command interaction.
+ * @returns `true` to allow execution, or a descriptive string explaining the denial.
+ *
+ * @public
  */
 export type Guard = (ctx: CommandContext) => GuardResult | Promise<GuardResult>;
 
+/**
+ * Execution context provided to slash command handlers.
+ *
+ * @public
+ */
 export interface CommandContext {
-  /** The raw discord.js interaction — never hidden behind a Circe wrapper. */
+  /** The raw discord.js interaction instance — never hidden or obscured. */
   readonly interaction: ChatInputCommandInteraction;
+  /** The active discord.js client instance. */
   readonly client: Client;
+  /** The Discord guild where the command was executed, or `null` if executed in DMs. */
   readonly guild: Guild | null;
-  /** `null` when the interaction did not originate in a guild, or the member wasn't cached. */
+  /** The invoking guild member, or `null` if executed in DMs or uncached. */
   readonly member: GuildMember | null;
+  /** The Discord user who triggered the interaction. */
   readonly user: User;
+  /** Context-scoped logger carrying interaction metadata and correlation ID. */
   readonly logger: Logger;
+  /** Unique UUID v4 correlation ID tracing this interaction through logs and telemetry. */
   readonly correlationId: string | undefined;
-  /** Translates `key` for `interaction.locale` via whichever `I18nResolver` the bot configured (see i18n.ts). Returns `key` verbatim when none is configured. */
+  /** Translates strings for the interaction's locale using the configured localization resolver. */
   readonly t: Translator;
 }
 
 /**
- * Context for a command's autocomplete handler. Deliberately smaller than
- * `CommandContext` — an autocomplete request has no guild member permission
- * checks to make, just "what should the choice list say right now."
+ * Execution context provided to command autocomplete handlers.
+ *
+ * @public
  */
 export interface AutocompleteContext {
-  /** The raw discord.js interaction. The handler calls `.respond(choices)` on it directly — Circe never intercepts the response. */
+  /** The raw discord.js autocomplete interaction instance. */
   readonly interaction: AutocompleteInteraction;
+  /** The active discord.js client instance. */
   readonly client: Client;
+  /** The Discord guild where the autocomplete request originated, or `null` if in DMs. */
   readonly guild: Guild | null;
+  /** Context-scoped logger carrying autocomplete metadata and correlation ID. */
   readonly logger: Logger;
+  /** Unique UUID v4 correlation ID tracing this request. */
   readonly correlationId: string | undefined;
-  /** Translates `key` for `interaction.locale` — for localizing choice names. Returns `key` verbatim when no resolver is configured. */
+  /** Translates strings for the interaction's locale. */
   readonly t: Translator;
 }
 
 /**
- * Handles a command's autocomplete requests. Calls `ctx.interaction.respond(...)`
- * itself — same convention as `execute` calling `ctx.interaction.reply(...)` —
- * rather than Circe inventing a return-value convention discord.js doesn't have.
+ * Handles incoming option autocomplete requests for a slash command.
+ *
+ * @param ctx - The autocomplete context providing interaction and helpers.
+ *
+ * @public
  */
 export type AutocompleteHandler = (ctx: AutocompleteContext) => void | Promise<void>;
 
+/**
+ * Declaration contract for a slash command module.
+ *
+ * @typeParam Metadata - Bot-defined custom metadata attached to the command definition.
+ *
+ * @public
+ */
 export interface CommandDefinition<
   Metadata extends Record<string, unknown> = Record<string, never>,
 > {
+  /** Slash command builder configuring the command name, description, and options. */
   readonly builder: CommandBuilder;
+  /** Optional sequence of guards evaluated sequentially before execution. */
   readonly guards?: readonly Guard[];
-  /** Optional — most commands don't need autocomplete. Absent entirely if the command has no autocompletable options. */
+  /** Optional autocomplete handler for autocompletable options declared in the builder. */
   readonly autocomplete?: AutocompleteHandler;
-  /**
-   * A bot-owned bag for whatever it needs to attach to a command — category,
-   * cooldown duration, feature flag, anything. Circe never reads this; it
-   * exists so a bot's own command loader/router extensions (or its own
-   * cooldown middleware) have a type-safe place to put data without fighting
-   * excess-property checks on `defineCommand({...})` call sites.
-   */
+  /** Optional bot-owned custom metadata attached to this command definition. */
   readonly metadata?: Metadata;
+  /** Core execution logic invoked when the command is called and all guards pass. */
   execute(ctx: CommandContext): void | Promise<void>;
 }
 
-/** Identity helper — exists purely for type inference/ergonomics at the call site. */
+/**
+ * Identity helper for declaring a slash command module with strict TypeScript inference.
+ *
+ * @typeParam Metadata - Bot-defined custom metadata shape.
+ * @param definition - The command specification.
+ * @returns The validated command definition.
+ *
+ * @example
+ * ```typescript
+ * import { SlashCommandBuilder } from 'discord.js';
+ * import { defineCommand } from '@sxnnyside/circe';
+ *
+ * export default defineCommand({
+ *   builder: new SlashCommandBuilder().setName('ping').setDescription('Replies with pong'),
+ *   execute(ctx) {
+ *     return ctx.interaction.reply('Pong!');
+ *   },
+ * });
+ * ```
+ *
+ * @public
+ */
 export function defineCommand<Metadata extends Record<string, unknown> = Record<string, never>>(
   definition: CommandDefinition<Metadata>,
 ): CommandDefinition<Metadata> {

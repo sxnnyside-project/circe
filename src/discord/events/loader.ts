@@ -4,8 +4,15 @@ import { discoverModules } from '../module-loader.js';
 import type { EventRegistry } from './registry.js';
 import type { EventDefinition } from './types.js';
 
+/**
+ * Options for configuring Discord event discovery and loading.
+ *
+ * @public
+ */
 export interface LoadEventsOptions {
+  /** The target event registry to register discovered modules into. */
   registry: EventRegistry;
+  /** Logger used to report discovery diagnostics and debug messages. */
   logger: Logger;
 }
 
@@ -28,10 +35,16 @@ function validateEventShape(value: unknown): string[] {
 }
 
 /**
- * Recursively discovers event modules under `directory`, imports each one,
- * validates its default export, and registers it. Mirrors `loadCommands` —
- * every malformed or unimportable file is aggregated into one
- * `ModuleValidationError` rather than stopping at the first one.
+ * Recursively discovers event modules under `directory`, imports each one, validates its default export, and registers it.
+ *
+ * @remarks
+ * Every malformed or unimportable file is aggregated into a single {@link ModuleValidationError}
+ * rather than stopping at the first failure.
+ *
+ * @param directory - Base directory or file URL containing event definition files.
+ * @param options - Registry and logger options.
+ * @throws {@link ModuleValidationError} If any module fails import or violates the event definition shape.
+ * @public
  */
 export async function loadEvents(
   directory: string | URL,

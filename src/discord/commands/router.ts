@@ -2,21 +2,15 @@ import {
   type ChatInputCommandInteraction,
   type Client,
   Events,
-  GuildMember,
   type Interaction,
 } from 'discord.js';
 import type { MiddlewareModule } from '../../application/middleware.js';
-import { runWithMiddleware } from '../../application/middleware.js';
-import { normalizeError } from '../../errors/normalize-error.js';
-import {
-  createTranslator,
-  IdentityLocalizationResolver,
-  type LocalizationResolver,
-  localizationContextOf,
-} from '../../localization/resolver.js';
+import type { LocalizationResolver } from '../../localization/resolver.js';
 import { getCorrelationId, withCorrelationId } from '../../logging/context.js';
 import type { Logger } from '../../logging/logger.js';
-import { type ErrorReporter, reportError } from '../../observability/report-error.js';
+import type { InteractionTelemetryHandler } from '../../observability/metrics.js';
+import type { ErrorReporter } from '../../observability/report-error.js';
+import { createBaseContext, runInteraction } from '../run-interaction.js';
 import { safeEphemeralReply } from '../safe-respond.js';
 import { CommandError } from './errors.js';
 import type { CommandRegistry } from './registry.js';
@@ -24,45 +18,76 @@ import type { CommandContext } from './types.js';
 
 /**
  * Called when an interaction names a command that isn't in the registry.
+ *
+ * @remarks
  * The default replies with a plain ephemeral message; override to localize
  * it, brand it, or route it elsewhere.
+ *
+ * @param ctx - The command interaction context.
+ *
+ * @public
  */
 export type UnknownCommandHandler = (ctx: CommandContext) => void | Promise<void>;
 
 /**
- * Called when a guard denies execution. `reason` is whatever the guard
- * returned. The default replies with that reason as plain ephemeral text;
- * override to control the reply's content and shape (embeds, localization,
- * a different interaction method entirely) instead of being limited to
- * Circe's plain-text default.
+ * Called when a guard denies execution.
+ *
+ * @remarks
+ * `reason` is whatever string the guard returned. The default replies with that
+ * reason as plain ephemeral text; override to control the reply's content and presentation.
+ *
+ * @param ctx - The command interaction context.
+ * @param reason - The descriptive denial reason returned by the failing guard.
+ *
+ * @public
  */
 export type GuardDeniedHandler = (ctx: CommandContext, reason: string) => void | Promise<void>;
 
 /**
- * Called when a guard or `execute()` throws. `error` is always a
- * `CommandError` — Circe normalizes and wraps whatever was thrown before
- * calling this. The default logs it and replies with a generic ephemeral
- * message; override for custom user-facing error presentation.
+ * Called when a guard or `execute()` throws an unhandled error.
+ *
+ * @remarks
+ * `error` is always normalized into a {@link CommandError}. The default logs the error
+ * and replies with a generic ephemeral message.
+ *
+ * @param ctx - The command interaction context.
+ * @param error - The normalized command error.
+ *
+ * @public
  */
 export type CommandErrorHandler = (
   ctx: CommandContext,
   error: CommandError,
 ) => void | Promise<void>;
 
+/**
+ * Configuration options for command routing and interaction handling.
+ *
+ * @public
+ */
 export interface CommandRouterOptions {
+  /** The registry containing registered command definitions. */
   registry: CommandRegistry;
+  /** Component logger for command routing diagnostics. */
   logger: Logger;
+  /** Custom handler invoked when an unregistered command name is received. */
   onUnknownCommand?: UnknownCommandHandler;
+  /** Custom handler invoked when a guard denies execution. */
   onGuardDenied?: GuardDeniedHandler;
+  /** Custom handler invoked when an execution error occurs. */
   onCommandError?: CommandErrorHandler;
+  /** Global or scoped interaction middleware hooks. */
   middleware?: MiddlewareModule;
-  /** Defaults to a resolver that returns every key verbatim, untranslated. */
+  /**
+   * Localization resolver for `ctx.t(key, params)`.
+   * @defaultValue Identity resolver returning keys untranslated.
+   */
   i18n?: LocalizationResolver;
-  /** Called for every error this router's boundary catches, decoupled from the user-facing reply — for external reporting (OpenTelemetry, Sentry, metrics). */
+  /** Central observability callback for logging and telemetry platforms. */
   onError?: ErrorReporter;
+  /** Telemetry callback invoked upon interaction completion. */
+  onInteractionComplete?: InteractionTelemetryHandler;
 }
-
-const defaultLocalizationResolver = new IdentityLocalizationResolver();
 
 async function defaultOnUnknownCommand(ctx: CommandContext): Promise<void> {
   ctx.logger.warn('Received interaction for an unregistered command', {
@@ -84,92 +109,51 @@ async function defaultOnCommandError(ctx: CommandContext, error: CommandError): 
 /**
  * Handles a single chat-input command interaction end to end: resolves the
  * command, runs its guards, executes it, and funnels any failure through
- * one error boundary — `onUnknownCommand`/`onGuardDenied`/`onCommandError`,
- * defaulting to a plain ephemeral reply when the bot doesn't supply its
- * own. Kept separate from `attachCommandRouter` so it can be exercised
- * with a hand-built interaction stub in tests, without a live client or
- * gateway connection.
+ * one error boundary — `onUnknownCommand`/`onGuardDenied`/`onCommandError`.
+ *
+ * @param interaction - The raw discord.js chat input command interaction.
+ * @param options - Routing options and handlers.
+ *
+ * @public
  */
 export async function handleCommandInteraction(
   interaction: ChatInputCommandInteraction,
   options: CommandRouterOptions,
 ): Promise<void> {
+  const start = performance.now();
   await withCorrelationId(async () => {
     const correlationId = getCorrelationId();
     const logger = options.logger.child({ command: interaction.commandName });
+    const ctx: CommandContext = createBaseContext(interaction, options.i18n, logger, correlationId);
 
-    const ctx: CommandContext = {
-      interaction,
-      client: interaction.client,
-      guild: interaction.guild,
-      member: interaction.member instanceof GuildMember ? interaction.member : null,
-      user: interaction.user,
-      logger,
-      correlationId,
-      t: createTranslator(
-        options.i18n ?? defaultLocalizationResolver,
-        interaction.locale,
-        localizationContextOf(interaction),
-      ),
-    };
-
-    const command = options.registry.get(interaction.commandName);
-
-    if (!command) {
-      await (options.onUnknownCommand ?? defaultOnUnknownCommand)(ctx);
-      return;
-    }
-
-    try {
-      await runWithMiddleware(
-        options.middleware,
-        () => ({ kind: 'command', name: interaction.commandName, logger, correlationId }),
-        async () => {
-          for (const guard of command.guards ?? []) {
-            const result = await guard(ctx);
-            if (result !== true) {
-              await (options.onGuardDenied ?? defaultOnGuardDenied)(ctx, result);
-              return;
-            }
-          }
-
-          await command.execute(ctx);
-        },
-      );
-    } catch (error) {
-      const normalized = normalizeError(error, `Command "${interaction.commandName}" failed`);
-      const commandError =
-        normalized instanceof CommandError
-          ? normalized
-          : new CommandError(normalized.message, {
-              cause: normalized,
-              operational: normalized.operational,
-              metadata: {
-                ...normalized.metadata,
-                reason: 'execution-failed',
-                command: interaction.commandName,
-              },
-            });
-      await reportError(
-        options.onError,
-        commandError,
-        {
-          kind: 'command',
-          name: interaction.commandName,
-          correlationId,
-          timestamp: new Date().toISOString(),
-          guildId: interaction.guildId ?? undefined,
-          channelId: interaction.channelId ?? undefined,
-          userId: interaction.user.id,
-        },
-        logger,
-      );
-      await (options.onCommandError ?? defaultOnCommandError)(ctx, commandError);
-    }
+    await runInteraction({
+      kind: 'command',
+      metricKind: 'command',
+      name: interaction.commandName,
+      failureMessage: `Command "${interaction.commandName}" failed`,
+      errorClass: CommandError,
+      identityKey: 'command',
+      start,
+      ctx,
+      handler: options.registry.get(interaction.commandName),
+      middleware: options.middleware,
+      onError: options.onError,
+      onInteractionComplete: options.onInteractionComplete,
+      onUnknown: options.onUnknownCommand ?? defaultOnUnknownCommand,
+      onGuardDenied: options.onGuardDenied ?? defaultOnGuardDenied,
+      onFailure: options.onCommandError ?? defaultOnCommandError,
+    });
   });
 }
 
-/** Wires the router onto a live discord.js client's `interactionCreate` event. */
+/**
+ * Wires the command router onto a live discord.js client's `interactionCreate` event.
+ *
+ * @param client - The discord.js client instance.
+ * @param options - Routing options and handlers.
+ *
+ * @public
+ */
 export function attachCommandRouter(client: Client, options: CommandRouterOptions): void {
   client.on(Events.InteractionCreate, (interaction: Interaction) => {
     if (!interaction.isChatInputCommand()) {

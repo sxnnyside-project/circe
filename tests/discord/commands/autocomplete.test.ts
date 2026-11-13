@@ -89,6 +89,32 @@ describe('handleAutocompleteInteraction', () => {
     expect(entries.some((entry) => entry.level === 'error')).toBe(true);
   });
 
+  test('a handler failure is passed to the onError reporter as an autocomplete report', async () => {
+    const registry = new CommandRegistry();
+    registry.register({
+      builder: new SlashCommandBuilder().setName('search').setDescription('search'),
+      autocomplete: async () => {
+        throw new Error('boom');
+      },
+      execute: async () => {},
+    });
+    const reports: { error: unknown; kind: string; name: string }[] = [];
+
+    const { logger } = silentLogger();
+    const { interaction } = makeInteraction('search');
+    await handleAutocompleteInteraction(interaction as never, {
+      registry,
+      logger,
+      onError: (error, context) => {
+        reports.push({ error, kind: context.kind, name: context.name });
+      },
+    });
+
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.error).toBeInstanceOf(CommandError);
+    expect(reports[0]).toMatchObject({ kind: 'autocomplete', name: 'search' });
+  });
+
   test('regression: an autocomplete failure is logged as a CommandError, not a generic CirceError', async () => {
     const registry = new CommandRegistry();
     registry.register({

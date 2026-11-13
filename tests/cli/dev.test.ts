@@ -92,6 +92,17 @@ describe('runDev', () => {
     expect(h.children[0]?.kills).toBe(1);
   });
 
+  test('keeps restarting on every later change, not only the first', async () => {
+    const h = harness();
+    stops.push((await runDev(project, h.dependencies)) as () => void);
+
+    for (let restart = 1; restart <= 3; restart++) {
+      h.change();
+      await settle();
+      expect(h.children).toHaveLength(restart + 1);
+    }
+  });
+
   test('stop() kills the running child and signals exit(0) through the signal path', async () => {
     const h = harness();
     const stop = (await runDev(project, h.dependencies)) as () => void;

@@ -95,6 +95,43 @@ describe('runWithMiddleware', () => {
     expect(order).toEqual(['before', 'after']);
   });
 
+  test('a throwing after hook is logged and never replaces the failure of fn', async () => {
+    const logged: string[] = [];
+    const loggingCtx = {
+      ...ctx,
+      logger: createLogger({ sink: (entry) => logged.push(entry.message) }),
+    };
+
+    await expect(
+      runWithMiddleware(
+        {
+          after: () => {
+            throw new Error('metrics failed');
+          },
+        },
+        () => loggingCtx,
+        async () => {
+          throw new Error('db down');
+        },
+      ),
+    ).rejects.toThrow('db down');
+    expect(logged).toEqual(['Middleware after hook threw']);
+  });
+
+  test('a throwing after hook does not fail an interaction that succeeded', async () => {
+    await expect(
+      runWithMiddleware(
+        {
+          after: () => {
+            throw new Error('metrics failed');
+          },
+        },
+        () => ctx,
+        async () => {},
+      ),
+    ).resolves.toBeUndefined();
+  });
+
   test('runs after even when fn returns early', async () => {
     const order: string[] = [];
     await runWithMiddleware(

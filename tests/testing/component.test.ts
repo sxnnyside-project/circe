@@ -57,4 +57,42 @@ describe('testComponent', () => {
 
     expect(translated).toBe('greeting.hello');
   });
+
+  test('supports select menus with values and fluent hasUpdate', async () => {
+    const selectMenu = defineComponent({
+      prefix: 'role_select:',
+      async execute(ctx) {
+        const roles = ctx.interaction.isAnySelectMenu() ? ctx.interaction.values : [];
+        await ctx.interaction.update(`Selected roles: ${roles.join(', ')}`);
+      },
+    });
+
+    const result = await testComponent(selectMenu, {
+      customId: 'role_select:roles',
+      values: ['mod', 'vip'],
+    });
+
+    expect(result.hasUpdate('Selected roles: mod, vip')).toBe(true);
+    expect(result.update?.content).toBe('Selected roles: mod, vip');
+  });
+
+  test('executes middleware and records telemetry', async () => {
+    let telemetryHit = false;
+    const component = defineComponent({
+      prefix: 'btn:click:',
+      async execute(ctx) {
+        await ctx.interaction.reply({ content: 'Clicked', ephemeral: true });
+      },
+    });
+
+    const result = await testComponent(component, {
+      customId: 'btn:click:1',
+      onInteractionComplete: (metric) => {
+        if (metric.name === 'btn:click:1') telemetryHit = true;
+      },
+    });
+
+    expect(result.hasEphemeralReply('Clicked')).toBe(true);
+    expect(telemetryHit).toBe(true);
+  });
 });

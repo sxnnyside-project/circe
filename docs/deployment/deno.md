@@ -6,14 +6,22 @@ Circe supports Deno 2 natively using standard npm package specifiers. The applic
 
 ## 1. Project Configuration (`deno.json`)
 
-Declare dependency specifiers in a `deno.json` at your project root alongside `circe.config.ts`:
+Declare dependency specifiers and task shortcuts in a `deno.json` at your project root alongside `circe.config.ts`:
 
 ```json
 {
+  "tasks": {
+    "dev": "deno run --allow-net --allow-env --allow-read --allow-write --allow-run npm:@sxnnyside/circe/cli dev",
+    "start": "deno run --allow-net --allow-env --allow-read npm:@sxnnyside/circe/cli start",
+    "build": "deno run --allow-net --allow-env --allow-read npm:@sxnnyside/circe/cli build",
+    "doctor": "deno run --allow-net --allow-env --allow-read npm:@sxnnyside/circe/cli doctor",
+    "routes": "deno run --allow-net --allow-env --allow-read npm:@sxnnyside/circe/cli routes"
+  },
   "imports": {
-    "@sxnnyside/circe": "npm:@sxnnyside/circe@^1.0.0",
-    "discord.js": "npm:discord.js@^14.16.0",
-    "zod": "npm:zod@^3.24.0"
+    "@sxnnyside/circe": "npm:@sxnnyside/circe@^1.2.0",
+    "@sxnnyside/circe/sqlite": "npm:@sxnnyside/circe@^1.2.0/sqlite",
+    "discord.js": "npm:discord.js@^14.28.1",
+    "zod": "npm:zod@^3.24.0 || ^4.0.0"
   }
 }
 ```
@@ -24,10 +32,10 @@ Declare dependency specifiers in a `deno.json` at your project root alongside `c
 
 ### Project Scaffolding
 
-Scaffold a complete starter project with configuration, typed schema, sample ping command, and environment template:
+Scaffold a complete Deno-native project directly in an empty directory using Deno:
 
 ```bash
-deno run --allow-read --allow-write npm:@sxnnyside/circe/cli init
+deno run --allow-read --allow-write npm:@sxnnyside/circe/cli init --runtime deno --standard
 ```
 
 Deno enforces an explicit permission security model. Circe runtime commands require the following permissions:
@@ -37,20 +45,20 @@ Deno enforces an explicit permission security model. Circe runtime commands requ
 | `--allow-net` | Connect to the Discord REST API, Gateway WebSocket, and bind the HTTP webhook port |
 | `--allow-env` | Read environment variables defined in credentials schemas |
 | `--allow-read` | Scan `scanRoot` (`src/`) for commands, events, and component definitions |
-| `--allow-run` | `circe dev` only: it restarts the bot as a child process on every file change |
+| `--allow-run` | `circe dev` only: restarts the bot as a child process on every file change |
 
 ### Local Development
 
-Run the CLI directly via npm specifier. `dev` also needs `--allow-run`, because it restarts the bot as a child process on every change (the child inherits the permissions you grant here):
+Run the development server via Deno task (reloading on change with child process supervisor):
 
 ```bash
-deno run --allow-net --allow-env --allow-read --allow-run npm:@sxnnyside/circe/cli dev
+deno task dev
 ```
 
 ### Production Execution
 
 ```bash
-deno run --allow-net --allow-env --allow-read npm:@sxnnyside/circe/cli start
+deno task start
 ```
 
 ### Pre-flight CI Validation
@@ -58,7 +66,7 @@ deno run --allow-net --allow-env --allow-read npm:@sxnnyside/circe/cli start
 Run contract verification without opening a Discord connection:
 
 ```bash
-deno run --allow-net --allow-env --allow-read npm:@sxnnyside/circe/cli build
+deno task build
 ```
 
 ---
@@ -91,8 +99,11 @@ export default defineCirceConfig({
 
 Web Crypto verification uses Deno's native `crypto.subtle.verify` with standard Ed25519 support.
 
-> [!NOTE]
-> The Bun SQLite store (`@sxnnyside/circe/bun-sqlite`) is runtime-specific to Bun. When deploying on Deno, use the default `MemoryCooldownStore` or provide an external database store.
+> [!TIP]
+> **Universal SQLite on Deno:** Circe's `SqliteCooldownStore` (`import { SqliteCooldownStore } from "@sxnnyside/circe/sqlite"`) works under Deno 2.2+ (`node:sqlite` is not available in earlier 2.x releases) utilizing standard library `node:sqlite` (`DatabaseSync`) without extra drivers or compilation.
+
+> [!IMPORTANT]
+> **SQLite file permissions:** An on-disk database needs read and write access to its file (`--allow-read=./data --allow-write=./data`); `:memory:` needs none. The `start` task above grants read only, so add a scoped `--allow-write` if you persist cooldowns. The official `circe init` Deno templates run with `-A` for simplicity; narrow that for production.
 
 ---
 
@@ -101,7 +112,7 @@ Web Crypto verification uses Deno's native `crypto.subtle.verify` with standard 
 A lightweight production container using the official Deno base image:
 
 ```dockerfile
-FROM denoland/deno:2.1.0 AS runner
+FROM denoland/deno:2.2.0 AS runner
 WORKDIR /app
 
 # Cache dependencies
@@ -110,26 +121,20 @@ RUN deno install
 
 # Copy application source
 COPY circe.config.ts ./
-COPY src ./src
+COPY src/ ./src/
 
-# Expose port only if using transport: "http" or "hybrid"
+ENV NODE_ENV=production
 EXPOSE 8787
 
 CMD ["run", "--allow-net", "--allow-env", "--allow-read", "npm:@sxnnyside/circe/cli", "start"]
 ```
 
-Build and run:
+---
 
-```bash
-docker build -t circe-deno-bot .
-docker run -d \
-  --name circe-deno-bot \
-  --env-file .env \
-  -p 8787:8787 \
-  circe-deno-bot
-```
+## 5. Deno Deploy
+
+Circe's `"http"` transport mode is fully compatible with [Deno Deploy](https://deno.com/deploy). Configure `transport: "http"`, deploy the repository, and bind your Discord Developer Portal Interactions Endpoint URL to your Deno Deploy project URL.
 
 ---
 
 *Circe is a Sxnnyside Project. Part of the [Sxnnyside Project](https://sxnnysideproject.com).*
-

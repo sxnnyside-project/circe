@@ -1,10 +1,6 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { CirceApp, CirceCredentials } from '../application/app.js';
-import { createCirce } from '../application/app.js';
-import type { ErrorBoundaryModule } from '../application/error-boundary.js';
-import type { MiddlewareModule } from '../application/middleware.js';
 import type {
   CirceConfigFile,
   HttpTransportConfig,
@@ -14,6 +10,10 @@ import { resolveIntegrations, type ScanCategory } from '../config/integration.js
 import { CirceError } from '../errors/circe-error.js';
 import type { LocalizationResolver } from '../localization/resolver.js';
 import type { Logger } from '../logging/logger.js';
+import type { CirceApp, CirceCredentials } from './app.js';
+import { createCirce } from './app.js';
+import type { ErrorBoundaryModule } from './error-boundary.js';
+import type { MiddlewareModule } from './middleware.js';
 
 const CONFIG_FILE_NAME = 'circe.config.ts';
 const MIDDLEWARE_FILE_NAME = 'middleware.ts';
@@ -21,10 +21,18 @@ const ERROR_BOUNDARY_FILE_NAME = 'error.ts';
 const LOCALIZATION_FILE_NAME = 'localization.ts';
 const I18N_FILE_NAME = 'i18n.ts';
 
-/** Raised when `circe.config.ts` is missing from the project root. */
+/**
+ * Raised when `circe.config.ts` is missing from the project root.
+ *
+ * @public
+ */
 export class ConfigFileNotFoundError extends CirceError {}
 
-/** Raised when `circe.config.ts` doesn't export a default produced by `defineCirceConfig(...)`. */
+/**
+ * Raised when `circe.config.ts` does not export a valid configuration object produced by `defineCirceConfig(...)`.
+ *
+ * @public
+ */
 export class ConfigFileInvalidError extends CirceError {}
 
 const LOADERS: Record<ScanCategory, (app: CirceApp, directory: string) => Promise<void>> = {
@@ -45,9 +53,16 @@ async function loadOptionalModule<T>(filePath: string): Promise<T | undefined> {
 }
 
 /**
- * Node runs TypeScript natively only from 22.18 (22.6+ behind a flag); on an
- * older Node the bare `Unknown file extension ".ts"` says nothing a bot
- * author can act on.
+ * Dynamically imports the project configuration file with engine-aware error diagnostics.
+ *
+ * @remarks
+ * Node.js runs TypeScript natively only from version 22.18 (or 22.6+ behind `--experimental-strip-types`).
+ * On older runtimes, Node throws `ERR_UNKNOWN_FILE_EXTENSION`. This helper intercepts that error
+ * and produces an actionable error message indicating the required runtime version.
+ *
+ * @param filePath - The absolute path to `circe.config.ts`.
+ * @returns The imported module namespace.
+ * @throws {@link ConfigFileInvalidError} When the runtime lacks native TypeScript loader support.
  */
 async function importConfigFile(filePath: string): Promise<unknown> {
   try {
@@ -59,13 +74,32 @@ async function importConfigFile(filePath: string): Promise<unknown> {
         { cause: error, metadata: { file: filePath } },
       );
     }
+    if (
+      (error as { code?: string }).code === 'ERR_MODULE_NOT_FOUND' ||
+      (error as { name?: string }).name === 'ResolveMessage' ||
+      /^Cannot find (package|module) /.test((error as { message?: string }).message ?? '')
+    ) {
+      throw new ConfigFileInvalidError(
+        `${CONFIG_FILE_NAME} imports something that is not installed (${(error as Error).message}). Install the project dependencies and retry.`,
+        { cause: error, metadata: { file: filePath } },
+      );
+    }
     throw error;
   }
 }
 
 /**
- * Loads `circe.config.ts` from `cwd` and checks it has a default export. Shared
- * by every command that reads it, so they all fail with the same messages.
+ * Loads `circe.config.ts` from `cwd` and asserts the existence of a default configuration export.
+ *
+ * @remarks
+ * Shared across CLI commands and programmatic loaders to guarantee consistent error reporting.
+ *
+ * @param cwd - The project root directory.
+ * @returns The resolved {@link CirceConfigFile} and its absolute file path.
+ * @throws {@link ConfigFileNotFoundError} When `circe.config.ts` does not exist.
+ * @throws {@link ConfigFileInvalidError} When the file lacks a valid default export.
+ *
+ * @public
  */
 export async function loadConfigFile(
   cwd: string,
@@ -79,9 +113,6 @@ export async function loadConfigFile(
     });
   }
 
-  // Dynamic import crosses the type boundary into the developer's own
-  // module — its shape is asserted, not statically known, the same way
-  // `discoverModules` treats every module it imports.
   const imported = (await importConfigFile(filePath)) as {
     // biome-ignore lint/suspicious/noExplicitAny: schema type is only known once loaded
     default?: CirceConfigFile<any>;
@@ -107,23 +138,70 @@ function countRegisteredModules(app: CirceApp): number {
   );
 }
 
+/**
+ * Represents a fully configured and populated {@link CirceApp} instance ready for execution or inspection.
+ *
+ * @public
+ */
 export interface PreparedApp {
+  /** The initialized Circe application with all discovered modules registered. */
   readonly app: CirceApp;
+  /** The resolved absolute directory where modules were scanned. */
   readonly scanRoot: string;
+  /** The active transport mode ('gateway', 'http', or 'hybrid'). */
   readonly transport: TransportMode;
+  /** HTTP transport configuration options when configured. */
   readonly httpConfig: HttpTransportConfig | undefined;
 }
 
 /**
- * Loads `circe.config.ts`, resolves integrations, discovers the optional
- * `middleware.ts`/`error.ts`/`i18n.ts` at the scan root, and scans every
- * module category — everything `circe start` and `circe build` share. Never
- * calls `app.start()`: that's the one thing left for each to do
- * differently (or, for `circe build`, not do at all).
+ * Options for {@link prepareApp}.
+ *
+ * @public
  */
-export async function prepareApp(cwd: string, logger: Logger): Promise<PreparedApp> {
+export interface PrepareAppOptions {
+  /**
+   * Skip loading the environment schema and use empty credentials. For commands that only
+   * inspect which modules exist; the returned app must not be started.
+   *
+   * @defaultValue `false`
+   */
+  readonly inspectOnly?: boolean;
+}
+
+/**
+ * Bootstraps a Circe application by loading configuration and discovering filesystem modules.
+ *
+ * @remarks
+ * Coordinates the full Inversion-of-Control (IoC) initialization lifecycle:
+ * 1. Loads `circe.config.ts` and parses typed environment variables.
+ * 2. Resolves integrations and health probes.
+ * 3. Dynamically discovers optional top-level modules (`middleware.ts`, `error.ts`, `localization.ts`/`i18n.ts`).
+ * 4. Discovers and registers interaction modules across commands, command groups, context menus, components, modals, and events.
+ * 5. Returns the prepared application instance *without* connecting to Discord Gateway or starting HTTP listeners.
+ *
+ * @param cwd - Project root directory.
+ * @param logger - The logger instance to attach to the application.
+ * @param options - Set `inspectOnly` to discover modules without reading the environment schema.
+ * @returns A promise resolving to the {@link PreparedApp} container.
+ *
+ * @throws {@link ConfigFileNotFoundError} When `circe.config.ts` is missing.
+ * @throws {@link ConfigFileInvalidError} When configuration is malformed or missing required keys (such as `http.publicKey`).
+ * @throws {@link ModuleValidationError} When any discovered module violates the framework contract.
+ *
+ * @public
+ */
+export async function prepareApp(
+  cwd: string,
+  logger: Logger,
+  options: PrepareAppOptions = {},
+): Promise<PreparedApp> {
   const { configFile, filePath: configFilePath } = await loadConfigFile(cwd);
-  const config = configFile.config.load() as CirceCredentials;
+  // Inspection (routes, manifest) only reads the module tree, so it must work in a CI job
+  // that has no secrets; `circe build` and `start` still validate the environment.
+  const config: CirceCredentials = options.inspectOnly
+    ? { token: '', clientId: '' }
+    : (configFile.config.load() as CirceCredentials);
   const scanRoot = path.resolve(cwd, configFile.scanRoot ?? './src');
   const resolved = await resolveIntegrations(configFile.integrations);
   const transport = configFile.transport ?? 'gateway';
@@ -166,8 +244,10 @@ export async function prepareApp(cwd: string, logger: Logger): Promise<PreparedA
     ...(configFile.shutdownTimeoutMs !== undefined
       ? { shutdownTimeoutMs: configFile.shutdownTimeoutMs }
       : {}),
+    ...(configFile.onInteractionComplete !== undefined
+      ? { onInteractionComplete: configFile.onInteractionComplete }
+      : {}),
     logger,
-    // "http"-only transport never opens a gateway connection; "hybrid" still does, for every non-interaction event.
     autoLogin: transport !== 'http',
     ...(middleware !== undefined ? { middleware } : {}),
     ...(localization !== undefined ? { localization } : {}),

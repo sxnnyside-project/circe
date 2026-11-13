@@ -133,4 +133,28 @@ describe('Lifecycle', () => {
     expect(lifecycle.state).toBe('stopped');
     expect(cleanupErrors).toEqual(['close failed']);
   });
+
+  test('a stop() during slow start hooks leaves the lifecycle stopped and start() rejects', async () => {
+    const lifecycle = new Lifecycle();
+    lifecycle.onStart(() => new Promise((resolve) => setTimeout(resolve, 30)));
+
+    const started = lifecycle.start();
+    await lifecycle.stop();
+
+    await expect(started).rejects.toThrow('Stopped during startup');
+    expect(lifecycle.state).toBe('stopped');
+  });
+
+  test('supports Symbol.asyncDispose via explicit resource management', async () => {
+    let stopped = false;
+    {
+      await using lifecycle = new Lifecycle();
+      lifecycle.onStop(() => {
+        stopped = true;
+      });
+      await lifecycle.start();
+      expect(lifecycle.state).toBe('running');
+    }
+    expect(stopped).toBe(true);
+  });
 });

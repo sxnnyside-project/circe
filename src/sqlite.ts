@@ -3,7 +3,7 @@
  *
  * @remarks
  * Supports native `bun:sqlite` under Bun and standard library `node:sqlite` (`DatabaseSync`)
- * under Node 22.5+, Node 24+, and Deno 2+.
+ * under Node 22.18+, Node 24+, and Deno 2.2+.
  *
  * @packageDocumentation
  */

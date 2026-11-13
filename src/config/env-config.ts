@@ -27,8 +27,9 @@ export interface SafeParseSchema<T = unknown> {
  *
  * @public
  */
-export interface EnvConfig<T = unknown> {
-  readonly schema: unknown;
+export interface EnvConfig<T = unknown, Schema = unknown> {
+  /** The schema the configuration is validated against, with the type it was declared with. */
+  readonly schema: Schema;
 
   /**
    * Validates `source` (defaults to `process.env`) against the schema and
@@ -47,7 +48,7 @@ export interface EnvConfig<T = unknown> {
  * @see {@link EnvConfig}
  * @public
  */
-export type CirceConfig<Schema extends z.ZodType = z.ZodType> = EnvConfig<z.infer<Schema>>;
+export type CirceConfig<Schema extends z.ZodType = z.ZodType> = EnvConfig<z.infer<Schema>, Schema>;
 
 /**
  * Declares a typed environment configuration contract for a bot.
@@ -79,7 +80,7 @@ export type CirceConfig<Schema extends z.ZodType = z.ZodType> = EnvConfig<z.infe
  */
 export function defineEnvConfig<Schema extends SafeParseSchema>(
   schema: Schema,
-): EnvConfig<Schema extends SafeParseSchema<infer D> ? D : unknown> {
+): EnvConfig<Schema extends SafeParseSchema<infer D> ? D : unknown, Schema> {
   type Output = Schema extends SafeParseSchema<infer D> ? D : unknown;
   return {
     schema,

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { CommandContext } from '../../../src/discord/commands/types.js';
 import { cooldown } from '../../../src/discord/guards/cooldown/cooldown.js';
 import { MemoryCooldownStore } from '../../../src/discord/guards/cooldown/memory-store.js';
+import type { CooldownStore } from '../../../src/discord/guards/cooldown/types.js';
 
 function fakeCtx(overrides: Partial<CommandContext> = {}): CommandContext {
   return {
@@ -18,6 +19,44 @@ function fakeCtx(overrides: Partial<CommandContext> = {}): CommandContext {
 }
 
 describe('cooldown', () => {
+  test("uses the store's atomic claim, so simultaneous calls on a shared store let only one through", async () => {
+    const taken = new Map<string, number>();
+    // Yields between look and write, the way a network store does.
+    const sharedStore: CooldownStore = {
+      check: async () => 0,
+      hit: async () => {},
+      claim: async (key) => {
+        await Promise.resolve();
+        if (taken.has(key)) return 1_000;
+        taken.set(key, 1);
+        return 0;
+      },
+    };
+    const guard = cooldown({ durationMs: 60_000, scope: 'user', store: sharedStore });
+
+    const results = await Promise.all([guard(fakeCtx()), guard(fakeCtx())]);
+
+    expect(results.filter((result) => result === true)).toHaveLength(1);
+  });
+
+  test('falls back to check then hit for a store without claim', async () => {
+    const calls: string[] = [];
+    const legacyStore: CooldownStore = {
+      check: (key) => {
+        calls.push(`check:${key}`);
+        return 0;
+      },
+      hit: (key) => {
+        calls.push(`hit:${key}`);
+      },
+    };
+
+    expect(
+      await cooldown({ durationMs: 1_000, scope: 'user', store: legacyStore })(fakeCtx()),
+    ).toBe(true);
+    expect(calls).toEqual(['check:ping:user:user-1', 'hit:ping:user:user-1']);
+  });
+
   test('allows the first call and denies an immediate second call within the same scope', async () => {
     const guard = cooldown({ durationMs: 60_000, scope: 'user' });
     const ctx = fakeCtx();

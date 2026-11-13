@@ -25,7 +25,7 @@ export interface InteractionsHttpHandlerOptions {
 
   /**
    * Largest accepted gap in seconds between request timestamp and current system time.
-   * Protects against replay attacks.
+   * Together with the duplicate-interaction check, protects against replay attacks.
    *
    * @defaultValue `300`
    */
@@ -96,6 +96,10 @@ async function readCappedBody(request: Request): Promise<string | undefined> {
 export function createInteractionsHandler(
   options: InteractionsHttpHandlerOptions,
 ): (request: Request) => Promise<Response> {
+  const maxSkewSeconds = options.maxTimestampSkewSeconds ?? DEFAULT_MAX_TIMESTAMP_SKEW_SECONDS;
+  // Insertion order is expiry order (constant TTL), so sweeping stops at the first live entry.
+  const seenInteractions = new Map<string, number>();
+
   return async (request: Request): Promise<Response> => {
     if (request.method !== 'POST') {
       return new Response(null, { status: 405, headers: { Allow: 'POST' } });
@@ -116,7 +120,7 @@ export function createInteractionsHandler(
     }
 
     const skew = Math.abs(Date.now() / 1000 - Number(timestamp));
-    if (!(skew <= (options.maxTimestampSkewSeconds ?? DEFAULT_MAX_TIMESTAMP_SKEW_SECONDS))) {
+    if (!(skew <= maxSkewSeconds)) {
       options.logger.warn('Rejected interaction request with a stale or malformed timestamp', {
         skewSeconds: Math.round(skew),
       });
@@ -149,10 +153,27 @@ export function createInteractionsHandler(
       return new Response('Invalid interaction payload', { status: 400 });
     }
 
-    const interactionPayload = payload as { type: number };
+    const interactionPayload = payload as { type: number; id?: unknown };
 
     if (interactionPayload.type === InteractionType.Ping) {
       return Response.json({ type: InteractionResponseType.Pong });
+    }
+
+    // A signature stays valid for the whole freshness window, so a captured request
+    // would otherwise run its command again; the interaction id is unique per delivery.
+    if (typeof interactionPayload.id === 'string') {
+      const now = Date.now();
+      for (const [id, expiresAt] of seenInteractions) {
+        if (expiresAt > now) {
+          break;
+        }
+        seenInteractions.delete(id);
+      }
+      if (seenInteractions.has(interactionPayload.id)) {
+        options.logger.warn('Rejected a replayed interaction request');
+        return new Response('Replayed interaction', { status: 409 });
+      }
+      seenInteractions.set(interactionPayload.id, now + 2 * maxSkewSeconds * 1000);
     }
 
     dispatchInteraction(options.client, interactionPayload);

@@ -1,12 +1,34 @@
-/** Extracts `"userId" | "action"` from `"ticket:close:[userId]:[action]"`. */
+/**
+ * Extracts union of parameter token names from a route pattern string.
+ *
+ * @example
+ * ```typescript
+ * type Keys = ParamNames<"ticket:view:[id]:[tab]">; // "id" | "tab"
+ * ```
+ *
+ * @public
+ */
 export type ParamNames<Pattern extends string> =
   Pattern extends `${string}[${infer Name}]${infer Rest}` ? Name | ParamNames<Rest> : never;
 
-/** The typed `ctx.params` shape a `pattern` string produces. */
+/**
+ * Derives a strongly-typed parameter dictionary from a route pattern string.
+ *
+ * @typeParam Pattern - The literal route string with colon-delimited variables.
+ *
+ * @public
+ */
 export type ParamsFromPattern<Pattern extends string> = { [K in ParamNames<Pattern>]: string };
 
+/**
+ * Compiled representation of a route pattern.
+ *
+ * @internal
+ */
 export interface CompiledPattern {
+  /** The leading static segment prefix used for registry prefix matching. */
   readonly prefix: string;
+  /** Custom parser extracting named token key-value pairs from `customId`. */
   parse(customId: string): Record<string, string>;
 }
 
@@ -17,16 +39,15 @@ function escapeRegExp(value: string): string {
 }
 
 /**
- * Compiles a `pattern` string like `"ticket:close:[userId]:[action]"` into
- * the `prefix`/`parse` pair the component registry and router already
- * understand. Pattern support is sugar resolved entirely at definition
- * time — the registry, router, and loader never see a pattern, only the
- * ordinary `ComponentDefinition` shape it compiles down to.
+ * Compiles a colon-delimited route pattern into a static prefix and regular expression parser.
  *
- * Every dynamic segment (`[name]`) must come after at least one static
- * segment — that static prefix is what the registry's longest-prefix-match
- * resolves on. `[name]` segments match one colon-delimited segment each,
- * never `:` itself.
+ * @remarks
+ * Every dynamic segment (`[name]`) must be preceded by at least one static prefix segment.
+ *
+ * @param pattern - The route pattern (e.g. `"ticket:view:[id]"`).
+ * @returns The compiled prefix and parse delegate.
+ *
+ * @internal
  */
 export function compilePattern(pattern: string): CompiledPattern {
   const segments = pattern.split(':');

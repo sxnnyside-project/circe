@@ -94,6 +94,10 @@ describe('resolveInteractionLocale', () => {
 });
 
 describe('interpolate', () => {
+  test('does not resolve tokens to inherited object members', () => {
+    expect(interpolate('hi {constructor}', { name: 'x' })).toBe('hi {constructor}');
+  });
+
   test('replaces tokens in template string', () => {
     const output = interpolate('Hello {user}, you have {count} messages!', {
       user: 'Alice',

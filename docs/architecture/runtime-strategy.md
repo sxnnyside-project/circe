@@ -6,10 +6,10 @@ Circe targets Bun as its primary runtime while providing first-class support for
 
 ## 1. Design Principles
 
-1. **Bun-first optimization, portable fallback**: Where Bun provides higher-performance primitives (`Bun.serve`, native SQLite, hot watcher), Circe utilizes them directly. On Node or Deno, portable standards-based implementations are used without degrading correctness.
-2. **Feature detection over version sniffing**: Runtime code checks for standard globals (`crypto.subtle`, `Bun`, `Deno`) rather than parsing fragile version strings.
+1. **Bun-first optimization, portable fallback**: Where Bun provides higher-performance primitives (`Bun.serve`, native `bun:sqlite`, hot watcher), Circe utilizes them directly. On Node or Deno, portable standards-based implementations (`node:sqlite`, `Deno.serve`, `node:http`) are used without degrading correctness.
+2. **Feature detection over version sniffing**: Runtime code checks for standard globals (`crypto.subtle`, `Bun`, `Deno`, `node:sqlite`) rather than parsing fragile version strings.
 3. **Explicit adapter boundaries**: Runtime-specific dependencies live behind focused interfaces. Core routers and business logic interact only with the interface, never with runtime globals.
-4. **Startup-time resolution**: Runtime detection and adapter selection execute once during boot and are recorded in structured startup logs.
+4. **Startup-time resolution**: Runtime detection and adapter selection execute once during boot and are recorded in structured startup logs via `detectRuntime()`.
 
 ---
 
@@ -17,11 +17,11 @@ Circe targets Bun as its primary runtime while providing first-class support for
 
 | Capability | Bun | Node.js 22+ | Deno 2+ |
 | :--- | :--- | :--- | :--- |
-| **CLI Runtime** | Native (`bun x circe`) | Native (`npx circe`) | Native (`deno run`) |
+| **CLI Runtime** | Native (`bun x circe`) | Native (`npx circe`) | Native (`deno task` / `deno run`) |
 | **File Watcher (`circe dev`)** | Native Bun watcher | Debounced `fs.watch` | Debounced `fs.watch` |
 | **HTTP Interactions Transport** | `Bun.serve` | `node:http` bridge | `Deno.serve` |
 | **Request Signature Verification** | Native Web Crypto (`crypto.subtle.verify`) | Native Web Crypto (`crypto.subtle.verify`) | Native Web Crypto (`crypto.subtle.verify`) |
-| **SQLite Cooldown Store** | Native `bun:sqlite` (`@sxnnyside/circe/bun-sqlite`) | N/A (use `MemoryCooldownStore`) | N/A (use `MemoryCooldownStore`) |
+| **SQLite Cooldown Store** (`@sxnnyside/circe/sqlite`) | Native `bun:sqlite` (Bun 1.4+) | Native `node:sqlite` (22.18+ recommended; experimental upstream) | Native `node:sqlite` (Deno 2.2+) |
 | **Gateway WebSocket** | Discord.js over WebSocket | Discord.js over WebSocket | Discord.js over WebSocket |
 
 ---
@@ -54,12 +54,14 @@ The interaction handler `createInteractionsHandler()` produces a portable web-st
 
 ## 4. Subpath Packaging
 
-To ensure importing `@sxnnyside/circe` in Node or Deno environments never triggers module resolution errors for Bun-only APIs:
+To ensure importing `@sxnnyside/circe` in any environment never triggers module resolution errors or pulls unused dependencies:
 
-- The SQLite cooldown store is isolated in a dedicated subpath export: `@sxnnyside/circe/bun-sqlite`.
-- The main entry point (`@sxnnyside/circe`) contains zero imports of `bun:sqlite`.
+- **`@sxnnyside/circe`**: The main application entry point, containing zero runtime-specific native module imports.
+- **`@sxnnyside/circe/sqlite`**: Universal SQLite persistence (`SqliteCooldownStore`), auto-detecting `bun:sqlite` under Bun and standard library `node:sqlite` (`DatabaseSync`) under Node.js 22.18+ and Deno 2.2+.
+- **`@sxnnyside/circe/bun-sqlite`**: Backward-compatible proxy pointing to `@sxnnyside/circe/sqlite`.
+- **`@sxnnyside/circe/testing`**: Offline interaction testing harness, stubs, and fluent assertions.
+- **`@sxnnyside/circe/cli`**: Programmatic access to CLI commands, diagnostics, and route inspectors.
 
 ---
 
 *Circe is a Sxnnyside Project. Part of the [Sxnnyside Project](https://sxnnysideproject.com).*
-

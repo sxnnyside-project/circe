@@ -115,6 +115,19 @@ describe('createCirce', () => {
     expect(app.state).toBe('stopped');
   });
 
+  test('supports Symbol.asyncDispose via explicit resource management', async () => {
+    let stopped = false;
+    {
+      await using app = testApp();
+      app.onStop(() => {
+        stopped = true;
+      });
+      await app.start();
+      expect(app.state).toBe('running');
+    }
+    expect(stopped).toBe(true);
+  });
+
   test('regression: stop() awaits client.destroy() rather than resolving before it settles', async () => {
     const app = testApp();
     await app.start();

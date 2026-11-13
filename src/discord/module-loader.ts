@@ -5,20 +5,39 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const MODULE_FILE_PATTERN = /\.(ts|js|mjs|cjs)$/;
 const DECLARATION_FILE_PATTERN = /\.d\.(ts|mts|cts)$/;
 
+/**
+ * An imported file from a scanned filesystem category directory.
+ *
+ * @internal
+ */
 export interface DiscoveredModule {
   /** Path relative to the scanned directory, e.g. `"moderation/ban.js"` for a nested file. */
   fileName: string;
-  /** The module's default export, unvalidated — the caller decides what shape it must have. */
+  /** The module's default export, unvalidated — the caller asserts the expected interface. */
   value: unknown;
 }
 
+/**
+ * Details of an unhandled exception thrown during dynamic module importation.
+ *
+ * @internal
+ */
 export interface DiscoveryFailure {
+  /** Path relative to the scanned directory. */
   fileName: string;
+  /** The error thrown by the dynamic import. */
   cause: unknown;
 }
 
+/**
+ * Aggregated result of recursive filesystem discovery.
+ *
+ * @internal
+ */
 export interface DiscoverModulesResult {
+  /** Successfully imported modules. */
   modules: DiscoveredModule[];
+  /** Modules that threw during dynamic import. */
   failures: DiscoveryFailure[];
 }
 
@@ -47,14 +66,17 @@ async function findModuleFiles(directoryPath: string): Promise<string[]> {
 }
 
 /**
- * Shared by every category loader: recursively scans `directory` for
- * `.ts`/`.js`/`.mjs`/`.cjs` files (category subfolders included — bots
- * organize commands however they need to) and dynamically imports each
- * one's default export. Import failures are collected in `failures`
- * rather than thrown immediately — the caller aggregates them alongside
- * shape-validation failures into one `ModuleValidationError` covering the
- * whole directory, per error-taxonomy.md's aggregation rule, instead of
- * stopping at the first bad file.
+ * Recursively scans `directory` for `.ts`/`.js`/`.mjs`/`.cjs` files and dynamically imports each default export.
+ *
+ * @remarks
+ * Subfolders are recursively included, permitting arbitrary nested directory structures.
+ * Import failures are aggregated into `failures` rather than thrown immediately, enabling
+ * composite validation error reporting via {@link ModuleValidationError}.
+ *
+ * @param directory - Absolute path string or `file://` URL of the target directory.
+ * @returns An object containing discovered modules and recorded import failures.
+ *
+ * @internal
  */
 export async function discoverModules(directory: string | URL): Promise<DiscoverModulesResult> {
   const directoryPath = directory instanceof URL ? fileURLToPath(directory) : directory;

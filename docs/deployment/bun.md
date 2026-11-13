@@ -8,10 +8,14 @@ Bun is Circe's primary runtime. Every framework capability — the CLI, the HTTP
 
 ### Project Scaffolding
 
-Scaffold a complete starter project with configuration, typed schema, sample ping command, and environment template:
+Scaffold a complete starter project in an empty directory with configuration, typed schema, sample ping command, and environment template:
 
 ```bash
-bun x circe init
+# Scaffold the project using the scoped package binary
+bun x @sxnnyside/circe init --standard
+
+# Install dependencies generated in package.json
+bun install
 ```
 
 ### Local Development
@@ -37,6 +41,15 @@ Before deploying, run `circe build` in your CI pipeline. It parses configuration
 
 ```bash
 bun x circe build
+```
+
+### Diagnostics & Route Inspection
+
+Inspect environment health and command routing:
+
+```bash
+bun x circe doctor
+bun x circe routes
 ```
 
 ---
@@ -90,7 +103,7 @@ In HTTP mode, `circe start` binds `Bun.serve` directly on the configured port an
 A minimal production container using the official Bun image:
 
 ```dockerfile
-FROM oven/bun:1.2-slim AS base
+FROM oven/bun:1.4-slim AS base
 WORKDIR /app
 
 # Install production dependencies
@@ -164,11 +177,11 @@ sudo journalctl -u circe-bot -f
 To persist rate limits across restarts with sub-millisecond overhead on Bun, import the isolated SQLite store:
 
 ```ts
-import { BunSqliteCooldownStore } from "@sxnnyside/circe/bun-sqlite";
+import { SqliteCooldownStore } from "@sxnnyside/circe/sqlite";
 import { cooldown } from "@sxnnyside/circe";
 
-// Pass the file path as a string (defaults to ":memory:" if omitted)
-const store = new BunSqliteCooldownStore("./data/cooldowns.sqlite");
+// Defaults to ":memory:" if `path` is omitted
+const store = new SqliteCooldownStore({ path: "./data/cooldowns.sqlite" });
 
 export const userCooldown = cooldown({
   durationMs: 5000,

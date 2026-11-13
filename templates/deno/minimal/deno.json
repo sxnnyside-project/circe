@@ -1,0 +1,20 @@
+{
+  "name": "circe-bot-minimal",
+  "version": "1.0.0",
+  "tasks": {
+    "dev": "deno run -A --watch npm:@sxnnyside/circe dev",
+    "start": "deno run -A npm:@sxnnyside/circe start",
+    "build": "deno run -A npm:@sxnnyside/circe build",
+    "check": "deno check **/*.ts"
+  },
+  "imports": {
+    "@sxnnyside/circe": "npm:@sxnnyside/circe@^1.2.0",
+    "discord.js": "npm:discord.js@^14.28.1",
+    "zod": "npm:zod@^4.6.7"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true
+  }
+}

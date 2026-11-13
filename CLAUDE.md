@@ -6,7 +6,7 @@ Circe is a TypeScript/Bun-first Discord bot framework built on `discord.js`, for
 
 ## Topology
 
-**Monolithic.** One package (`@sxnnyside/circe`), four publishable entry points — `circe` (main), `circe/testing`, `circe/cli` (the executable entry, for `deno run npm:@sxnnyside/circe/cli`: importing it runs the CLI, so it is not a library), and `circe/bun-sqlite` (isolated so importing the main package never pulls in `bun:sqlite` on Node/Deno) — plus the `circe` CLI binary. No workspace/monorepo tooling.
+**Monolithic.** One package (`@sxnnyside/circe`), five publishable entry points — `circe` (main), `circe/testing`, `circe/cli` (the executable entry, for `deno run npm:@sxnnyside/circe/cli`: importing it runs the CLI, so it is not a library), `circe/sqlite` (the SQLite cooldown store on `bun:sqlite` or `node:sqlite`, isolated so importing the main package never loads either), and the deprecated `circe/bun-sqlite` alias of it — plus the `circe` CLI binary. No workspace/monorepo tooling.
 
 ## Stack
 
@@ -46,14 +46,16 @@ The `circe` CLI binary (what a *consuming bot* runs) is separate from the script
 ```
 src/
 ├── application/     # lifecycle state machine, createCirce() wiring, onStart/onStop hooks,
-│                     # middleware, and the error-boundary escape hatch
-├── cli/              # circe init/start/dev/build — the IoC entry point; prepare-app.ts is the
-│                     # shared "load config, scan modules" path start/build both call
+│                     # middleware, the error-boundary escape hatch, and prepare-app.ts — the shared
+│                     # "load config, scan modules" path the CLI commands call
+├── cli/              # circe init/start/dev/build/doctor/routes/add — the IoC entry point
 ├── config/           # defineConfig() (bot's env schema) + defineCirceConfig() (circe.config.ts
 │                     # contract) + integration.ts (the sole circe.config.ts extension point)
 ├── logging/          # structured logger + AsyncLocalStorage correlation IDs
 ├── errors/           # CirceError base + ModuleValidationError/DiscoveryConflictError + normalizeError()
-├── i18n/             # I18nResolver contract + IdentityI18nResolver default (verbatim passthrough)
+├── localization/     # LocalizationResolver contract + IdentityLocalizationResolver default (verbatim passthrough)
+├── health/           # /health and /ready probe handler
+├── sqlite/           # SqliteCooldownStore (bun:sqlite or node:sqlite), behind the circe/sqlite subpath
 ├── observability/    # ErrorReporter telemetry hook, decoupled from user-facing reply-shaping hooks
 ├── runtime/           # detectRuntime() (Bun/Node/Deno feature detection) + the dev-mode file watcher
 ├── transport/         # HTTP Interactions Endpoint: signature verification, the discord.js
@@ -67,7 +69,7 @@ src/
 │   ├── components/           # types, registry (longest-prefix match), loader, interaction router,
 │   │   └── pagination/         # pattern.ts (typed customId patterns), and the built-in paginator
 │   ├── modals/               # types, registry, loader, interaction router
-│   └── guards/               # guildOnly, hasPermission, cooldown (memory + bun:sqlite stores) —
+│   └── guards/               # guildOnly, hasPermission, cooldown (memory + SQLite stores) —
 │                             # mechanism only, never policy
 ├── testing/          # circe/testing subpath: testCommand/testComponent/testModal/testEvent,
 │                     # exercising the real router code against hand-built interaction stubs
@@ -96,8 +98,8 @@ src/
 - **Circe stays below the application layer.** If a change would encode a bot's business decision (which permission bits map to "staff," what a command does, how errors are branded) rather than generic Discord/process infrastructure, it doesn't belong here — it belongs in the bot consuming Circe.
 - **No dependency injection container, no plugin system, no event bus, no persistence layer.** discord.js's own `EventEmitter` is the only event dispatch mechanism; `dispatcher.ts` wraps handlers for correlation/error-isolation, it does not route between them. `config/integration.ts`'s `{ name, setup(context) }` shape is the one deliberate extension point, and it only grants `onStart`/`onStop` hooks and extra scan roots — not a general plugin API.
 - **`bun:test` over any other test runner, `bun build` + `tsc --emitDeclarationOnly` over any other bundler.** Both are the idiomatic, zero-extra-dependency choice for a Bun-native project — don't swap them in for a JS-ecosystem alternative without a concrete reason.
-- **Every public API export goes through `src/index.ts` (or `src/testing/index.ts`, `src/cli/index.ts`, `src/bun-sqlite.ts`).** If something needs exposing to consumers, add it there explicitly — don't rely on deep imports.
-- **`bun:sqlite`-backed code never leaks into the main entry point.** It lives behind the `@sxnnyside/circe/bun-sqlite` subpath specifically so importing `@sxnnyside/circe` on Node or Deno never triggers an eager-evaluation module resolution error.
+- **Every public API export goes through `src/index.ts` (or `src/testing/index.ts`, `src/cli/index.ts`, `src/sqlite.ts`, `src/bun-sqlite.ts`).** If something needs exposing to consumers, add it there explicitly — don't rely on deep imports.
+- **SQLite-backed code never leaks into the main entry point.** It lives behind the `@sxnnyside/circe/sqlite` subpath (and its deprecated `bun-sqlite` alias) specifically so importing `@sxnnyside/circe` on Node or Deno never triggers an eager-evaluation module resolution error for `bun:sqlite`.
 - **HTTP transport reuses discord.js's own internal interaction pipeline.** `transport/interaction-bridge.ts` feeds a verified raw webhook payload into `client.actions.InteractionCreate.handle()` (a real, if TS-`private`, discord.js API) so every router (commands/components/modals/context-menus) needs zero changes regardless of transport — gateway and HTTP interactions converge on the same code path.
 - **Comments explain *why*, not *what* or *when*.** Don't reference implementation history, prior designs, or how a piece of code came to be — only the current reasoning a maintainer needs to make a safe change. If a comment would only make sense to someone who watched the code get written, rewrite it or delete it.
 - **No speculative abstraction.** Every module here should be traceable to an actual, demonstrated need (evidence from real bot code or a real defect), not "this might be useful later."

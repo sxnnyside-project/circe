@@ -1,9 +1,15 @@
 import type { User } from 'discord.js';
 import type { GuardResult } from '../commands/types.js';
 
-/** The slice of a component context this guard reads. */
+/**
+ * Context slice required by the {@link invokerOnly} guard.
+ *
+ * @public
+ */
 export interface InvokerContext {
+  /** The Discord user who clicked or submitted the component/modal. */
   readonly user: User;
+  /** The underlying interaction carrying the origin message metadata. */
   readonly interaction: {
     readonly message?: {
       readonly interactionMetadata?: { readonly user: { readonly id: string } } | null;
@@ -12,20 +18,42 @@ export interface InvokerContext {
   };
 }
 
+/**
+ * Configuration options for the {@link invokerOnly} guard.
+ *
+ * @public
+ */
 export interface InvokerOnlyOptions {
   /**
-   * Where the owner's id comes from when it isn't the user who triggered the
-   * message's originating interaction (e.g. an id encoded in the `customId`).
-   * Return `undefined` to deny: ownership that cannot be established is
-   * never assumed.
+   * Custom resolver extracting the intended owner ID (e.g. from a customId payload).
+   *
+   * @remarks
+   * If this returns `undefined` and origin message metadata is absent, access is denied.
+   *
+   * @param ctx - The invoker context.
+   * @returns The resolved owner Discord user ID, or `undefined` if unresolvable.
    */
   readonly resolveOwnerId?: (ctx: InvokerContext) => string | undefined;
 }
 
 /**
- * Restricts a component or modal to the user who invoked the interaction
- * that produced the message it lives on. Mechanism only — what a non-owner
- * is told is the bot's `onGuardDenied` presentation.
+ * Creates a guard restricting component or modal interactions to the original invoker who created the message.
+ *
+ * @param options - Configuration options and optional custom ID owner resolver.
+ * @returns A guard function ensuring only the originating user can interact with the component.
+ *
+ * @example
+ * ```typescript
+ * import { defineComponent, invokerOnly } from '@sxnnyside/circe';
+ *
+ * export default defineComponent({
+ *   prefix: 'paginator:',
+ *   guards: [invokerOnly()],
+ *   execute(ctx) { ... }
+ * });
+ * ```
+ *
+ * @public
  */
 export function invokerOnly(
   options: InvokerOnlyOptions = {},

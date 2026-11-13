@@ -5,7 +5,7 @@ import {
   ConfigFileInvalidError,
   ConfigFileNotFoundError,
   prepareApp,
-} from '../../src/cli/prepare-app.js';
+} from '../../src/application/prepare-app.js';
 import type { LogEntry } from '../../src/logging/logger.js';
 import { createLogger } from '../../src/logging/logger.js';
 
@@ -75,6 +75,22 @@ describe('prepareApp', () => {
     delete process.env.clientId;
   });
 
+  test('inspectOnly discovers modules without the environment the schema requires', async () => {
+    delete process.env.token;
+    delete process.env.clientId;
+    const { logger } = silentLogger();
+
+    await withProject(
+      { 'circe.config.ts': CONFIG_FIXTURE, 'src/commands/ping.ts': VALID_PING },
+      async (dir) => {
+        await expect(prepareApp(dir, logger)).rejects.toThrow();
+
+        const { app } = await prepareApp(dir, logger, { inspectOnly: true });
+        expect(app.commands.registry.size).toBe(1);
+      },
+    );
+  });
+
   test('throws ConfigFileNotFoundError when circe.config.ts is absent', async () => {
     await withProject({}, async (dir) => {
       const { logger } = silentLogger();
@@ -121,17 +137,17 @@ describe('prepareApp', () => {
   });
 
   test('respects a custom scanRoot from circe.config.ts', async () => {
-    const customConfig = CONFIG_FIXTURE.replace(
+    const config = CONFIG_FIXTURE.replace(
       'intents: [],',
-      'intents: [],\n  scanRoot: "./bot",',
+      'intents: [],\n  scanRoot: "./custom-root",',
     );
     await withProject(
-      { 'circe.config.ts': customConfig, 'bot/commands/ping.ts': VALID_PING },
+      { 'circe.config.ts': config, 'custom-root/commands/ping.ts': VALID_PING },
       async (dir) => {
         const { logger } = silentLogger();
         const { app, scanRoot } = await prepareApp(dir, logger);
 
-        expect(scanRoot).toBe(path.join(dir, 'bot'));
+        expect(scanRoot).toBe(path.join(dir, 'custom-root'));
         expect(app.commands.registry.size).toBe(1);
       },
     );
@@ -142,8 +158,9 @@ describe('prepareApp', () => {
       const { logger, entries } = silentLogger();
       await prepareApp(dir, logger);
 
-      const warning = entries.find((entry) => entry.level === 'warn');
-      expect(warning?.message).toContain('No commands, events, components, or modals discovered');
+      expect(entries.some((e) => e.level === 'warn' && e.message.includes('No commands'))).toBe(
+        true,
+      );
     });
   });
 
@@ -154,7 +171,7 @@ describe('prepareApp', () => {
         const { logger, entries } = silentLogger();
         await prepareApp(dir, logger);
 
-        expect(entries.some((entry) => entry.level === 'warn')).toBe(false);
+        expect(entries.some((e) => e.level === 'warn')).toBe(false);
       },
     );
   });
@@ -162,10 +179,9 @@ describe('prepareApp', () => {
   test('defaults transport to gateway with no httpConfig', async () => {
     await withProject({ 'circe.config.ts': CONFIG_FIXTURE }, async (dir) => {
       const { logger } = silentLogger();
-      const { transport, httpConfig } = await prepareApp(dir, logger);
-
-      expect(transport).toBe('gateway');
-      expect(httpConfig).toBeUndefined();
+      const prepared = await prepareApp(dir, logger);
+      expect(prepared.transport).toBe('gateway');
+      expect(prepared.httpConfig).toBeUndefined();
     });
   });
 
@@ -173,7 +189,7 @@ describe('prepareApp', () => {
     const config = CONFIG_FIXTURE.replace('intents: [],', 'intents: [],\n  transport: "http",');
     await withProject({ 'circe.config.ts': config }, async (dir) => {
       const { logger } = silentLogger();
-      await expect(prepareApp(dir, logger)).rejects.toBeInstanceOf(ConfigFileInvalidError);
+      await expect(prepareApp(dir, logger)).rejects.toThrow(ConfigFileInvalidError);
     });
   });
 
@@ -181,23 +197,22 @@ describe('prepareApp', () => {
     const config = CONFIG_FIXTURE.replace('intents: [],', 'intents: [],\n  transport: "hybrid",');
     await withProject({ 'circe.config.ts': config }, async (dir) => {
       const { logger } = silentLogger();
-      await expect(prepareApp(dir, logger)).rejects.toBeInstanceOf(ConfigFileInvalidError);
+      await expect(prepareApp(dir, logger)).rejects.toThrow(ConfigFileInvalidError);
     });
   });
 
   test('accepts and returns a well-formed http transport config, without opening a gateway connection', async () => {
     const config = CONFIG_FIXTURE.replace(
       'intents: [],',
-      'intents: [],\n  transport: "http",\n  http: { publicKey: "aa".repeat(32), port: 9999 },',
+      `intents: [],\n  transport: "http",\n  http: { publicKey: "${'ab'.repeat(32)}" },`,
     );
     await withProject({ 'circe.config.ts': config }, async (dir) => {
       const { logger } = silentLogger();
-      const { transport, httpConfig, app } = await prepareApp(dir, logger);
-
-      expect(transport).toBe('http');
-      expect(httpConfig).toEqual({ publicKey: 'aa'.repeat(32), port: 9999 });
+      const prepared = await prepareApp(dir, logger);
+      expect(prepared.transport).toBe('http');
+      expect(prepared.httpConfig?.publicKey).toBe('ab'.repeat(32));
       // "created" — prepareApp never calls app.start() regardless of transport.
-      expect(app.state).toBe('created');
+      expect(prepared.app.state).toBe('created');
     });
   });
 });

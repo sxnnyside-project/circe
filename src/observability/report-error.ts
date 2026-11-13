@@ -5,7 +5,13 @@ import type { Logger } from '../logging/logger.js';
  * Category of Discord entity where the error occurred.
  * @public
  */
-export type ErrorReportKind = 'command' | 'component' | 'modal' | 'context-menu' | 'event';
+export type ErrorReportKind =
+  | 'command'
+  | 'autocomplete'
+  | 'component'
+  | 'modal'
+  | 'context-menu'
+  | 'event';
 
 /**
  * Contextual metadata passed to an `ErrorReporter`.
