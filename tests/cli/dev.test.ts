@@ -117,13 +117,12 @@ describe('runDev', () => {
   test('reports a missing circe.config.ts with exit code 1 and starts nothing', async () => {
     const h = harness();
     const empty = await mkdtemp(path.join(TEMP_ROOT, 'empty-'));
-    const previousExitCode = process.exitCode;
 
     const stop = await runDev(empty, h.dependencies);
 
     expect(stop).toBeUndefined();
     expect(h.children).toHaveLength(0);
     expect(process.exitCode).toBe(1);
-    process.exitCode = previousExitCode ?? 0;
+    process.exitCode = 0;
   });
 });

@@ -7,7 +7,6 @@ import { runInit } from '../../src/cli/init.js';
 const BUILD_ROOT = path.join(import.meta.dirname, '..', '..', '.tmp-test-build');
 let dir: string;
 const originalEnv = { ...process.env };
-const originalExitCode = process.exitCode;
 const originalStdout = process.stdout.write.bind(process.stdout);
 const originalStderr = process.stderr.write.bind(process.stderr);
 let stdout: string;
@@ -33,7 +32,7 @@ beforeEach(async () => {
 afterEach(async () => {
   process.stdout.write = originalStdout;
   process.stderr.write = originalStderr;
-  process.exitCode = originalExitCode;
+  process.exitCode = 0;
   process.env = { ...originalEnv };
   await rm(dir, { recursive: true, force: true });
 });

@@ -44,7 +44,6 @@ describe('createNodeInteractionsServer', () => {
       logger,
     });
     const errors: Error[] = [];
-    const previousExitCode = process.exitCode;
     const second = createNodeInteractionsServer({
       port: 39230,
       fetch: async () => new Response(null),
@@ -58,7 +57,7 @@ describe('createNodeInteractionsServer', () => {
       expect((errors[0] as NodeJS.ErrnoException).code).toBe('EADDRINUSE');
       expect(process.exitCode).toBe(1);
     } finally {
-      process.exitCode = previousExitCode ?? 0;
+      process.exitCode = 0;
       first.stop();
       second.stop();
     }
