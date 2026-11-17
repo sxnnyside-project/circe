@@ -137,4 +137,4 @@ Circe's `"http"` transport mode is fully compatible with [Deno Deploy](https://d
 
 ---
 
-*Circe is a Sxnnyside Project. Part of the [Sxnnyside Project](https://sxnnysideproject.com).*
+*Circe — A Sxnnyside Project. Part of the [Sxnnyside Project](https://sxnnysideproject.com) ecosystem.*

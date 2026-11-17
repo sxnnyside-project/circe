@@ -1,8 +1,14 @@
 # Circe
 
-![Version](https://img.shields.io/badge/version-1.2.0-orange)
+![Circe banner](https://raw.githubusercontent.com/sxnnyside-project/circe/main/docs/assets/circe-banner.png)
+
+![Version](https://img.shields.io/badge/version-1.2.0-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
-[![CI](https://github.com/sxnnyside-project/circe/workflows/CI/badge.svg)](https://github.com/sxnnyside-project/circe/actions)
+[![CI](https://github.com/sxnnyside-project/circe/actions/workflows/ci.yml/badge.svg)](https://github.com/sxnnyside-project/circe/actions/workflows/ci.yml)
+![Platform](https://img.shields.io/badge/platform-Bun%20%7C%20Node.js%20%7C%20Deno-lightgrey)
+[![npm](https://img.shields.io/npm/v/@sxnnyside/circe)](https://www.npmjs.com/package/@sxnnyside/circe)
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2)](https://discord.gg/h3hhNY8VTE)
+[![Patreon](https://img.shields.io/badge/Patreon-SxnnysideProject-F96854)](https://patreon.com/SxnnysideProject)
 
 <p align="center">
   <strong>Inversion of Control ✦ Dual-Transport (Gateway & HTTP) ✦ Cross-Runtime</strong><br>
@@ -14,6 +20,7 @@
   <a href="#features">Features</a> ✦
   <a href="#installation">Installation</a> ✦
   <a href="#usage">Usage</a> ✦
+  <a href="#api">API</a> ✦
   <a href="#architecture">Architecture</a> ✦
   <a href="#contributing">Contributing</a>
 </p>
@@ -22,7 +29,7 @@
 
 ## About
 
-**Circe** is an inversion-of-control application framework for Discord bots, built on top of `discord.js`.
+**Circe** is an inversion-of-control application framework for Discord bots, built on top of `discord.js`. Part of the Sxnnyside Project ecosystem.
 
 Most Discord bot stacks in TypeScript are built as imperative scripts. Developers manually instantiate a client, write custom filesystem loaders to discover commands, handle nested subcommands with repetitive switch statements, parse dynamic `customId` strings with manual string splitting, and maintain 24/7 stateful WebSocket Gateway connections when stateless HTTP Webhooks would suffice. As bots scale, this glue code accumulates and fails silently at runtime.
 
@@ -50,30 +57,47 @@ This is a Sxnnyside Project, part of the ecosystem's shared infrastructure.
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) (`>=1.4.0`), [Node.js](https://nodejs.org) (`>=22.18.0`, the first release that runs TypeScript natively), or [Deno](https://deno.com) (`>=2.0.0`)
+- [Bun](https://bun.sh) (`>=1.4.0`), [Node.js](https://nodejs.org) (`>=22.18.0`), or [Deno](https://deno.com) (`>=2.0.0`, Deno SQLite `>=2.2.0`)
 - `discord.js` (`^14.16.0 || ^14.28.0`) peer dependency
 - `zod` (`^3.24.0 || ^4.0.0`) peer dependency
 
-### Package Managers
+### Install
+
+Install `@sxnnyside/circe` and required peer dependencies across any supported runtime or package manager:
 
 ```bash
-# Bun (Recommended)
+# Bun
 bun add @sxnnyside/circe discord.js zod
 
-# npm
+# Node.js (npm)
 npm install @sxnnyside/circe discord.js zod
 
-# pnpm
+# Node.js (pnpm)
 pnpm add @sxnnyside/circe discord.js zod
 
-# Yarn (Classic 1.x, or Berry 4.x with node-modules or Plug'n'Play)
+# Node.js (Yarn)
 yarn add @sxnnyside/circe discord.js zod
 
 # Deno
 deno add npm:@sxnnyside/circe npm:discord.js npm:zod
 ```
 
-CI installs the packed tarball with npm, pnpm, Yarn Classic and Yarn Berry (both linkers) and checks that the `circe` binary and the entry points load. Yarn Classic prints `The engine "bun" appears to be invalid`; it is harmless, because `engines.bun` is only a hint for Bun users.
+CI installs the packed tarball across npm, pnpm, Yarn Classic, and Yarn Berry (both linkers) to verify the binary and all subpath exports.
+
+### CLI Execution
+
+Execute the `circe` CLI directly across runtimes without global installation:
+
+```bash
+# Bun
+bun x @sxnnyside/circe <command>
+
+# Node.js (npx)
+npx @sxnnyside/circe <command>
+
+# Deno
+deno run -A npm:@sxnnyside/circe/cli <command>
+```
 
 ### From Source
 
@@ -124,10 +148,12 @@ export default defineCommand({
 Run the bot via the Circe CLI:
 
 ```bash
-# Scaffold a new project starter in an empty folder (Bun, Node, or Deno)
+# Scaffold a new project starter in an empty folder:
 bun x @sxnnyside/circe init --standard
-# Or with Node.js:
+# Or on Node.js:
 npx @sxnnyside/circe init --standard
+# Or on Deno:
+deno run -A npm:@sxnnyside/circe/cli init --standard
 
 # Run pre-flight health diagnostics
 bun x circe doctor
@@ -148,16 +174,69 @@ bun x circe start
 bun x circe build
 ```
 
+## API
+
+Circe exposes a modular TypeScript API across its entry points:
+
+### Core (`@sxnnyside/circe`)
+
+```ts
+import {
+  defineCirceConfig,
+  defineConfig,
+  defineCommand,
+  defineCommandGroup,
+  defineSubcommand,
+  defineContextMenu,
+  defineEvent,
+  defineComponent,
+  defineModal,
+  defineGuard,
+  defineMiddleware,
+  defineLocalizationResolver,
+  createCirce,
+  createPaginator,
+  detectRuntime,
+  guildOnly,
+  hasPermission,
+  cooldown,
+} from "@sxnnyside/circe";
+```
+
+- **Application Lifecycle**: `defineCirceConfig`, `defineConfig`, `createCirce`, `detectRuntime`
+- **Route Definitions**: `defineCommand`, `defineCommandGroup`, `defineSubcommand`, `defineContextMenu`, `defineEvent`, `defineComponent`, `defineModal`
+- **Execution Gates**: `defineGuard`, `defineMiddleware`, `guildOnly`, `hasPermission`, `cooldown`
+- **Localization**: `defineLocalizationResolver`, `localizationContextOf`, `createTranslator`, `resolveInteractionLocale`, `interpolate`
+- **Interactive UI**: `createPaginator`
+
+### SQLite Persistence (`@sxnnyside/circe/sqlite`)
+
+```ts
+import { SqliteCooldownStore } from "@sxnnyside/circe/sqlite";
+```
+
+- Multi-runtime zero-copy SQLite cooldown store backed by `bun:sqlite` on Bun and standard library `node:sqlite` (`DatabaseSync`) on Node.js 22.18+ and Deno 2.2+.
+
+### Test Harness (`@sxnnyside/circe/testing`)
+
+```ts
+import {
+  testCommand,
+  testComponent,
+  testModal,
+  testContextMenu,
+  testAutocomplete,
+  createTestInteraction,
+} from "@sxnnyside/circe/testing";
+```
+
+- Offline interaction simulation and assertions for unit testing without live Discord connections.
+
+For detailed specifications, contracts, and guides, see the [Architecture Documentation](docs/architecture/).
+
 ## Architecture
 
-```
-circe/
-├── src/               # Framework core (CLI, transport, runtime adapters, loaders, routers)
-├── tests/             # Comprehensive behavioral test suites (Gateway, Webhook, CLI, routing)
-└── docs/              # Architectural specifications and module contracts
-```
-
-For a detailed breakdown of specifications and contracts, see [docs/architecture/](docs/architecture/).
+For a detailed breakdown, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Contributing
 

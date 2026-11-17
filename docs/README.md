@@ -25,4 +25,4 @@ Step-by-step guides for running and deploying Circe bots in development and prod
 
 ---
 
-*Circe is a Sxnnyside Project. Part of the [Sxnnyside Project](https://sxnnysideproject.com).*
+*Circe — A Sxnnyside Project. Part of the [Sxnnyside Project](https://sxnnysideproject.com) ecosystem.*

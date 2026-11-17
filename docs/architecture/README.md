@@ -17,4 +17,4 @@ Circe is an inversion-of-control application framework for Discord bots on Bun, 
 
 ---
 
-*Circe is a Sxnnyside Project. Part of the [Sxnnyside Project](https://sxnnysideproject.com).*
+*Circe — A Sxnnyside Project. Part of the [Sxnnyside Project](https://sxnnysideproject.com) ecosystem.*

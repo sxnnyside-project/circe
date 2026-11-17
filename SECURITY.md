@@ -5,7 +5,7 @@
 If you find a security vulnerability in **Circe**, report it privately before disclosing it publicly.
 
 **Preferred channel:**
-Email — `legal.sxnnyside@sxnnysideproject.com`
+Email — `security.sxnnyside@sxnnysideproject.com`
 
 **Alternative:**
 [GitHub Private Security Advisory](https://github.com/sxnnyside-project/circe/security/advisories/new)
@@ -49,4 +49,4 @@ For ecosystem-wide security concerns, use the email above.
 
 ---
 
-*Circe is a Sxnnyside Project. Part of the [Sxnnyside Project](https://sxnnysideproject.com).*
+*Circe — A Sxnnyside Project. Part of the [Sxnnyside Project](https://sxnnysideproject.com) ecosystem.*

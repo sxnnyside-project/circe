@@ -1,6 +1,6 @@
 import {
-  type APIEmbed,
   ActionRowBuilder,
+  type APIEmbed,
   ButtonBuilder,
   ButtonStyle,
   StringSelectMenuBuilder,

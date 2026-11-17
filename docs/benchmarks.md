@@ -29,3 +29,7 @@ Apple Silicon Mac, two consecutive runs:
 - **Node's `node:http` bridge is the slowest by design**: it's the one runtime here without a native "serve this Fetch handler" API, so every request pays for a `IncomingMessage`/`ServerResponse` → `Request`/`Response` conversion (`transport/serve.ts`'s `nodeRequestToWebRequest`/`writeWebResponseToNode`) that Bun and Deno skip entirely.
 - **Zero failures on all three** is the more important number for a Discord bot framework: Discord's Interactions Endpoint gives a bot a few seconds to respond, not microseconds — every runtime here clears that bar by a wide margin. This benchmark is about relative overhead, not about any runtime being "too slow" to run a production bot.
 - These numbers describe one localhost round-trip of the transport layer only — not command execution time, not a bot's own handler logic, and not real network latency to Discord's servers, which will dominate actual production request time regardless of runtime.
+
+---
+
+*Circe — A Sxnnyside Project. Part of the [Sxnnyside Project](https://sxnnysideproject.com) ecosystem.*

@@ -14,4 +14,4 @@ Circe bots can be deployed across multiple JavaScript runtimes and hosting envir
 
 ---
 
-*Circe is a Sxnnyside Project. Part of the [Sxnnyside Project](https://sxnnysideproject.com).*
+*Circe — A Sxnnyside Project. Part of the [Sxnnyside Project](https://sxnnysideproject.com) ecosystem.*

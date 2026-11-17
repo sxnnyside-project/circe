@@ -39,6 +39,8 @@ Violations are handled directly. A first instance gets a clear explanation of wh
 
 There is no committee. Decisions are made by the maintainer.
 
+To report a violation, email `support.sxnnyside@sxnnysideproject.com`.
+
 ---
 
 ## Scope
@@ -47,4 +49,4 @@ This Code of Conduct applies to all project spaces: issues, pull requests, commi
 
 ---
 
-*Circe is a Sxnnyside Project. Part of the [Sxnnyside Project](https://sxnnysideproject.com).*
+*Circe — A Sxnnyside Project. Part of the [Sxnnyside Project](https://sxnnysideproject.com) ecosystem.*

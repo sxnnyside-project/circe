@@ -7,10 +7,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [1.2.0] — 2026-11-13
+## [Unreleased]
+
+## [1.2.0] — 2026-11-17
 
 ### Added
 
+- **Manifest Generator (`circe manifest`)**: Generates deterministic `.circe/project.json` declaring bot routes, conventions, and runtime configuration without exposing credentials. Includes `--check` mode for CI verification.
+- **Official Agent Skills (`.agents/skills/`)**: Embedded operational contracts for AI coding assistants (`circe-project-conventions`, `circe-add-module`, `circe-verify-changes`, `circe-diagnose-errors`).
+- **Structured Error Reporting (`--format json`)**: CLI machine-readable JSON output for build diagnostics and usage errors (`circe build --format json`).
 - **Universal Multi-Runtime SQLite Persistence (`@sxnnyside/circe/sqlite`)**:
   - Implements `SqliteCooldownStore` with native zero-copy `bun:sqlite` under Bun and standard library `node:sqlite` (`DatabaseSync`) under Node.js 22.18+, Node.js 24+, and Deno 2.2+ without third-party npm dependencies.
   - Automatically enables Write-Ahead Logging (`PRAGMA journal_mode = WAL`) on disk databases.
